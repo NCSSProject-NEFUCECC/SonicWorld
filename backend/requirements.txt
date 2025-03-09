@@ -1,0 +1,5 @@
+flask==2.2.3
+jinja2==3.0.3
+werkzeug==2.2.3
+flask-cors==3.0.10
+openai>=1.0.0
