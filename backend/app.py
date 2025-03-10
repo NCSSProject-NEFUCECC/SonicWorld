@@ -198,4 +198,4 @@ def call_llm_api(llm_lr_response):
         return "抱歉，系统处理出现未知错误。"
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0',debug=True, port=5000)

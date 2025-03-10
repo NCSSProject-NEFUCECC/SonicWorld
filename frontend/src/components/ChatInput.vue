@@ -31,7 +31,7 @@ const handleSubmit = async () => {
     isLoading.value = true
     error.value = null
     
-    const response = await axios.post('http://localhost:5000/api/chat', {
+    const response = await axios.post('http://www.der5nd.cn:5000/api/chat', {
       message: message.value
     })
 
