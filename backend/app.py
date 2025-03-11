@@ -8,7 +8,6 @@ import dashscope
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
@@ -126,6 +125,7 @@ def call_llm_api(llm_lr_response):
                     timeout=timeout,
                     result_format='message'
                 )
+                print(completion.output.choices[0].message.content)
                 return completion.output.choices[0].message.content
             except Exception as e:
                 print(f"普通聊天API调用错误: {str(e)}")
@@ -142,6 +142,7 @@ def call_llm_api(llm_lr_response):
                     result_format='message',
                     timeout=timeout
                 )
+                
                 return completion.output.choices[0].message.content[0].get('text')
             except Exception as e:
                 print(f"查找位置API调用错误: {str(e)}")
@@ -158,6 +159,7 @@ def call_llm_api(llm_lr_response):
                     timeout=timeout,
                     result_format='message'
                 )
+                print(completion.output.choices[0].message.content[0].get('text'))
                 return completion.output.choices[0].message.content[0].get('text')
             except Exception as e:
                 print(f"识别前方的情况API调用错误: {str(e)}")
@@ -174,6 +176,7 @@ def call_llm_api(llm_lr_response):
                     result_format='message',
                     timeout=timeout
                 )
+                print(completion.output.choices[0].message.content[0].get('text'))
                 return completion.output.choices[0].message.content[0].get('text')
             except Exception as e:
                 print(f"文字阅读API调用错误: {str(e)}")
@@ -190,6 +193,7 @@ def call_llm_api(llm_lr_response):
                     timeout=timeout,
                     result_format='message'
                 )
+                print(completion.output.choices[0].message.content)
                 return completion.output.choices[0].message.content
             except Exception as e:
                 print(f"法律咨询API调用错误: {str(e)}")
