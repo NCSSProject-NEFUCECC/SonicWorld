@@ -9,6 +9,7 @@ import dashscope
 
 app = Flask(__name__)
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
@@ -58,7 +59,7 @@ def chat():
 
 @socketio.on('stream_transport')
 def call_llm_api(llm_lr_response):
-    image_path = r"img/Screenshot_2024-12-24-13-59-18-329_com.ss.android.ugc.aweme.jpg"
+    image_path = r"img/default.png"
     base64_image = encode_image(image_path)
     # 解析传入的意图识别结果
     try:
@@ -116,6 +117,7 @@ def call_llm_api(llm_lr_response):
         
         if intent == "普通聊天":
             try:
+                full_text = ""
                 completion = dashscope.Generation.call(
                     model="qwen-plus",
                     messages=llm_basechat,
@@ -125,19 +127,18 @@ def call_llm_api(llm_lr_response):
                     },
                     timeout=timeout,
                     stream = True,
-               
+                    incremental_output = True,
                     result_format='message'
                 )
                 for chunk in completion:
+                    # print(chunk.output.choices[0].message.content)
                     if chunk.status_code == 200:
-                        content_list = chunk.output.choices[0].message.content
-                        if isinstance(content_list, list) and len(content_list) > 0:
-                            text_content = content_list[0].get('text')
-                            if text_content:
-                                full_text += text_content
-                                socketio.emit('new_chunk', {'chunk': text_content})
+                        text_content = chunk.output.choices[0].message.content
+                        socketio.emit('new_chunk', {'chunk': text_content})
+                        print(text_content)        
                     else:
                         socketio.emit('error', {'message': chunk.message})
+                return full_text  # 这里可能导致重复输出
             except Exception as e:
                 print(f"普通聊天API调用错误: {str(e)}")
                 if "Connection" in str(e):
@@ -218,5 +219,18 @@ def call_llm_api(llm_lr_response):
             return "抱歉，服务连接出现问题，请稍后再试。"
         return "抱歉，系统处理出现未知错误。"
 
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
+
+@socketio.on('message')
+def handle_message(message):
+    response = call_llm_api(message)
+    socketio.emit('response', {'response': response})
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0',debug=True, port=5000)
+    socketio.run(app, host='0.0.0.0', debug=True, port=5000)
