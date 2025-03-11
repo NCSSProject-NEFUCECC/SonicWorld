@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 import os
 import json
 import base64
@@ -56,9 +55,8 @@ def chat():
         print(f"错误: {str(e)}")
         return jsonify({"error": "服务器内部错误"}), 500
 
-@socketio.on('stream_transport')
 def call_llm_api(llm_lr_response):
-    image_path = r"img/Screenshot_2024-12-24-13-59-18-329_com.ss.android.ugc.aweme.jpg"
+    image_path = r"img/default.png"
     base64_image = encode_image(image_path)
     # 解析传入的意图识别结果
     try:
@@ -116,6 +114,7 @@ def call_llm_api(llm_lr_response):
         
         if intent == "普通聊天":
             try:
+                full_text = ""
                 completion = dashscope.Generation.call(
                     model="qwen-plus",
                     messages=llm_basechat,
@@ -124,25 +123,14 @@ def call_llm_api(llm_lr_response):
                         "enable_search": True
                     },
                     timeout=timeout,
-                    stream = True,
-               
                     result_format='message'
                 )
-                for chunk in completion:
-                    if chunk.status_code == 200:
-                        content_list = chunk.output.choices[0].message.content
-                        if isinstance(content_list, list) and len(content_list) > 0:
-                            text_content = content_list[0].get('text')
-                            if text_content:
-                                full_text += text_content
-                                socketio.emit('new_chunk', {'chunk': text_content})
-                    else:
-                        socketio.emit('error', {'message': chunk.message})
+                return completion.output.choices[0].message.content
             except Exception as e:
                 print(f"普通聊天API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return socketio.emit('error', {'message': "抱歉，服务连接出现问题，请稍后再试。"})
-                return socketio.emit('error', {'message': "抱歉，处理您的请求时出现了问题。"})
+                    return print("抱歉，服务连接出现问题，请稍后再试。")
+                return print("抱歉，处理您的请求时出现了问题。")
                 
         elif intent == "查找某物的位置":
             try:
@@ -218,5 +206,6 @@ def call_llm_api(llm_lr_response):
             return "抱歉，服务连接出现问题，请稍后再试。"
         return "抱歉，系统处理出现未知错误。"
 
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0',debug=True, port=5000)
+    app.run(host='0.0.0.0', debug=True, port=5000)
