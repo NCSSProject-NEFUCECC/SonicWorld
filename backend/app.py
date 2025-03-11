@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 import os
 import json
 import base64
@@ -57,7 +56,6 @@ def chat():
         print(f"错误: {str(e)}")
         return jsonify({"error": "服务器内部错误"}), 500
 
-@socketio.on('stream_transport')
 def call_llm_api(llm_lr_response):
     image_path = r"img/default.png"
     base64_image = encode_image(image_path)
@@ -126,24 +124,14 @@ def call_llm_api(llm_lr_response):
                         "enable_search": True
                     },
                     timeout=timeout,
-                    stream = True,
-                    incremental_output = True,
                     result_format='message'
                 )
-                for chunk in completion:
-                    # print(chunk.output.choices[0].message.content)
-                    if chunk.status_code == 200:
-                        text_content = chunk.output.choices[0].message.content
-                        socketio.emit('new_chunk', {'chunk': text_content})
-                        print(text_content)        
-                    else:
-                        socketio.emit('error', {'message': chunk.message})
-                return full_text  # 这里可能导致重复输出
+                return completion.output.choices[0].message.content
             except Exception as e:
                 print(f"普通聊天API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return socketio.emit('error', {'message': "抱歉，服务连接出现问题，请稍后再试。"})
-                return socketio.emit('error', {'message': "抱歉，处理您的请求时出现了问题。"})
+                    return print("抱歉，服务连接出现问题，请稍后再试。")
+                return print("抱歉，处理您的请求时出现了问题。")
                 
         elif intent == "查找某物的位置":
             try:
@@ -219,18 +207,6 @@ def call_llm_api(llm_lr_response):
             return "抱歉，服务连接出现问题，请稍后再试。"
         return "抱歉，系统处理出现未知错误。"
 
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('Client disconnected')
-
-@socketio.on('message')
-def handle_message(message):
-    response = call_llm_api(message)
-    socketio.emit('response', {'response': response})
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', debug=True, port=5000)
+    app.run(host='0.0.0.0', debug=True, port=5000)
