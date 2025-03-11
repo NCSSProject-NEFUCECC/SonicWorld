@@ -8,6 +8,7 @@ import dashscope
 
 app = Flask(__name__)
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
