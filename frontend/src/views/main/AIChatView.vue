@@ -36,13 +36,18 @@
           <div v-if="loading" class="loading-indicator">
             <p class="loading-dots">导盲助手正在思考，请稍候...</p>
           </div>
+          <div v-if="filled" class="loading-indicator">
+            <p class="loading-dots">超出对话限制，请开始新的对话</p>
+            <el-button @click="resetF()">开始新的对话</el-button>
+          </div>
         </div>
         <div class="chat-input">
           <el-input
             v-model="userInput"
             placeholder="请输入你的问题"
+            :disabled="filled"
             @keyup.enter="sendMessage"></el-input>
-          <el-button @click="sendMessage">发送</el-button>
+          <el-button @click="sendMessage" :disabled="filled">发送</el-button>
         </div>
       </div>
     </div>
@@ -50,7 +55,7 @@
   
   <script setup lang="ts">
   import type { Message } from '@/datasource/types'
-  import { chat, manageMessages } from '@/services/AIService'
+  import { chat } from '@/services/AIService'
   import { ElMessage } from 'element-plus'
   import { ref } from 'vue'
   
@@ -58,23 +63,29 @@
   const chatMessages = ref<Message[]>([])
   const userInput = ref('')
   const loading = ref(false)
-  
+  const filled=ref(false);
+  const limitNum=20;
+  const resetF=()=>{
+    chatMessages.value=[];
+    filled.value=false;
+  }
   const sendMessage = async () => {
     if (!userInput.value.trim()) return
-
     chatMessages.value.push({role:'user',content: userInput.value})
-    userInput.value = ''
     try {
       loading.value = true
   
-    //   // 使用消息管理函数(历史记录处理)
-    //   const processedMessages = manageMessages(chatMessages.value, userInput.value)
-      const processedMessages=userInput.value;
+      // 使用消息管理函数(历史记录处理)
+      userInput.value = ''
       // 调用服务
-      const response = await chat(processedMessages)
+      const response = await chat(chatMessages.value)
   
       // 更新消息记录
       chatMessages.value.push({role:'assistant',content: response});
+      if(chatMessages.value.length >= 2*limitNum) {
+      ElMessage.error('消息数量超过限制')
+      filled.value=true;
+    }
     } catch (error) {
       ElMessage.error('请求失败: ' + (error as Error).message)
     } finally {

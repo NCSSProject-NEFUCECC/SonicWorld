@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { ref, reactive } from 'vue'
-import LoadingView from './components/LoadingView.vue';
+// import LoadingView from './components/LoadingView.vue';
 
 </script>
 <template>
@@ -10,7 +10,7 @@ import LoadingView from './components/LoadingView.vue';
       <router-view />
     </template>
     <template #fallback>
-      <loading-view />
+      <!-- <loading-view /> -->
     </template>
   </suspense>
 </template>

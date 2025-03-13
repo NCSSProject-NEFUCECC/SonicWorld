@@ -19,18 +19,6 @@
           <el-icon><Search /></el-icon>
           <template #title>开始对话</template>
         </el-menu-item>
-        <el-menu-item index="2" @click="handleOpen('2', [])">
-          <el-icon><DataAnalysis /></el-icon>
-          <template #title>阅读文字</template>
-        </el-menu-item>
-        <el-menu-item index="3" @click="handleOpen('3', [])">
-          <el-icon><Reading /></el-icon>
-          <template #title>法律咨询</template>
-        </el-menu-item>
-        <el-menu-item index="4" @click="handleOpen('4', [])">
-          <el-icon><Document /></el-icon>
-          <template #title>环境识别</template>
-        </el-menu-item>
       </div>
       <el-divider></el-divider>
   
