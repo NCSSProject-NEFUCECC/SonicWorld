@@ -4,7 +4,9 @@ from flask_cors import CORS
 import os
 import json
 import base64
+import time
 import dashscope
+from navigator import ana_msg
 
 app = Flask(__name__)
 CORS(app)
@@ -39,19 +41,21 @@ def intent_recognition(message):
         # 设置超时时间
         timeout = 30
         messages = [
-                {'role': 'system', 'content': '你是一个意图分类器，严格按以下规则处理输入：1.分类范围[普通聊天][查找某物的位置][阅读文字][法律咨询][识别前方的情况][领航任务]；2.领航任务包含引导移动指令如"带路""扶我到"等；3.结合全部历史消息解析指代（例：前文提到书后说"读它"→阅读文字）；4.输出严格遵循{"intent":"","msg":""}格式,不要越俎代庖擅自向用户提供建议；5.新意图/低置信度(＜80%)归普通聊天；示例：用户输入"带我去电梯"→{"intent":"领航任务","msg":"带我去电梯"}；用户输入"这是什么牌子"→{"intent":"识别前方的情况","msg":"这是什么牌子"}。务必注意！！你的输出只能是JSON格式，且不能有多余的文字,不要自作主张向用户提供建议，那是其他人的任务。你擅自将输出中添加其他东西会导致整个系统失效，务必执行好自己的任务，不要自作主张，不要越俎代庖！'},
+                {'role': 'system', 'content': '你是一个意图分类器，严格按以下规则处理输入：1.分类范围[普通聊天][查找某物的位置][阅读文字][法律咨询][识别前方的情况][领航任务]；2.领航任务包含引导移动指令如"带路""扶我到"或是用户直接说打开领航模式等；3.结合全部历史消息解析指代（例：前文提到书后说"读它"→阅读文字）；4.输出严格遵循{"intent":"","msg":""}格式,不要越俎代庖擅自向用户提供建议；5.新意图/低置信度(＜80%)归普通聊天；示例：用户输入"带我去电梯"→{"intent":"领航任务","msg":"带我去电梯"}；用户输入"这是什么牌子"→{"intent":"识别前方的情况","msg":"这是什么牌子"}。务必注意！！你的输出只能是JSON格式，且不能有多余的文字,不要自作主张向用户提供建议，那是其他人的任务。你擅自将输出中添加其他东西会导致整个系统失效，务必执行好自己的任务，不要自作主张，不要越俎代庖！'},
             ]
         messages.extend(message)
-        print(messages)
+        # print(messages)
         llm_ir = dashscope.Generation.call(
             model="qwen2.5-14b-instruct-1m",
             messages=messages,
             result_format='message'
         )
+        print(llm_ir)
         intent = llm_ir.output.choices[0].message.content
-        print(intent)
+        # print(intent)
         intent = json.loads(intent)
         intent = intent.get('intent')
+        print(intent)
         return intent
     except Exception as e:
         print(f"错误: {str(e)}")
@@ -70,6 +74,9 @@ def chat():
             return jsonify({"error": "消息不能为空"}), 400
         
         # 意图识别
+        if user_message == "后端启动领航":
+            ana_msg(user_message)
+            return jsonify({"response": "领航模式已启动"})
         response = intent_recognition(user_messages)
         # print(response)
         response = call_llm_api(response,user_messages)
@@ -80,6 +87,58 @@ def chat():
         print(f"错误: {str(e)}")
         return jsonify({"error": "服务器内部错误"}), 500
 
+# 新增导航API端点
+@app.route('/api/navigate', methods=['POST'])
+def navigate():
+    try:
+        data = request.json
+        image_data = data.get('image', '')
+        location = data.get('location', {})
+        
+        if not image_data or not location:
+            return jsonify({"error": "图像或位置信息不能为空"}), 400
+        
+        # 保存接收到的图像
+        image_path = save_image(image_data)
+        
+        # 调用导航函数处理图像和位置信息
+        navigation_result = process_navigation(image_path, location)
+        
+        return jsonify({"result": navigation_result})
+    
+    except Exception as e:
+        print(f"导航错误: {str(e)}")
+        return jsonify({"error": "导航服务器内部错误"}), 500
+
+# 保存Base64编码的图像到文件
+def save_image(image_data):
+    # 从Base64字符串中提取图像数据
+    if image_data.startswith('data:image'):
+        # 移除MIME类型前缀
+        image_data = image_data.split(',')[1]
+    
+    # 确保目录存在
+    if not os.path.exists('img'):
+        os.makedirs('img')
+    
+    # 使用固定文件名保存图片，覆盖之前的图片
+    image_path = os.path.join('img', "navigation.jpg")
+    
+    # 解码并保存图像
+    with open(image_path, "wb") as image_file:
+        image_file.write(base64.b64decode(image_data))
+    
+    return image_path
+
+# 处理导航请求
+def process_navigation(image_path, location):
+    try:
+        # 调用navigator模块处理导航请求
+        from navigator import process_navigation_request
+        return process_navigation_request(image_path, location)
+    except Exception as e:
+        print(f"处理导航请求错误: {str(e)}")
+        return "导航处理失败，请稍后再试"
 
 
 def call_llm_api(llm_lr_response,history_msg):
@@ -140,8 +199,8 @@ def call_llm_api(llm_lr_response,history_msg):
             except Exception as e:
                 print(f"普通聊天API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return print("抱歉，服务连接出现问题，请稍后再试。")
-                return print("抱歉，处理您的请求时出现了问题。")
+                    return "抱歉，服务连接出现问题，请稍后再试。"
+                return "抱歉，处理您的请求时出现了问题。"
                 
         elif intent == "查找某物的位置":
             try:
@@ -237,16 +296,7 @@ def call_llm_api(llm_lr_response,history_msg):
                 return "抱歉，无法处理法律咨询请求。"
         elif intent == "领航任务":
             try:
-                llm_navigator.extend(text_messages)
-                completion = dashscope.Generation.call(
-                    model="qwen-plus",
-                    messages=llm_navigator,
-                    temperature=0.7,
-                    timeout=timeout,
-                    result_format='message'
-                )
-                history_msg.append({"role": "assistant", "content": completion.output.choices[0].message.content})
-                return completion.output.choices[0].message.content
+                return "领航模式"
             except Exception as e:
                 print(f"领航任务API调用错误: {str(e)}")
                 if "Connection" in str(e):

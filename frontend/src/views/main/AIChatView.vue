@@ -58,6 +58,9 @@
   import { chat } from '@/services/AIService'
   import { ElMessage } from 'element-plus'
   import { ref } from 'vue'
+  import { useRouter } from 'vue-router'
+  
+  const router = useRouter()
   
   // 小智AI对话相关
   const chatMessages = ref<Message[]>([])
@@ -79,7 +82,10 @@
       userInput.value = ''
       // 调用服务
       const response = await chat(chatMessages.value)
-  
+      if(response==='领航模式'){
+        //跳转页面
+        router.push('/navigation')
+      }
       // 更新消息记录
       chatMessages.value.push({role:'assistant',content: response});
       if(chatMessages.value.length >= 2*limitNum) {
