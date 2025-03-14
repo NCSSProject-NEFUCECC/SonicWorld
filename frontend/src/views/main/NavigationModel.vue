@@ -62,21 +62,6 @@ const initNavigationMode = async () => {
   navigationStarted.value = true
   
   console.log('初始化导航模式')
-  // 发送启动领航消息到后端
-  chat([{ role: 'user', content: '后端启动领航' }])
-    .then(response => {
-      if (navigationResponse.value !== null) {
-        navigationResponse.value = response
-      } else {
-        navigationResponse.value = response
-      }
-      console.log('领航模式启动成功:', response)
-    })
-    .catch(error => {
-      console.error('启动领航消息发送失败:', error)
-    })
-  
-  // 开始拍照循环
   captureAndSendFrame()
 }
 
@@ -208,26 +193,86 @@ const captureAndSendFrame = () => {
       
       console.log('成功捕获视频帧，准备发送到后端')
       
-      // 发送图像和位置信息到后端
-      axios.post('http://localhost:5000/api/navigate', {
-        image: imageData,
-        location: locationInfo.value
+      // 清空之前的导航响应
+      navigationResponse.value = '正在分析环境...';
+      
+      // 使用fetch API发送请求并处理流式响应
+      fetch('http://localhost:5000/api/navigate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          image: imageData,
+          location: locationInfo.value
+        })
       })
       .then(response => {
-        console.log('导航数据发送成功:', response.data)
-        navigationResponse.value = response.data.result
-        // 等待模型回复后再次拍照发送
-        setTimeout(captureAndSendFrame, 3000) // 3秒后再次拍照发送
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        // 获取响应的可读流
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('无法获取响应流');
+        }
+        
+        // 处理流式响应
+        const processStream = async () => {
+          try {
+            let receivedText = '';
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) {
+                console.log('流式响应接收完成');
+                break;
+              }
+              
+              // 将接收到的数据块转换为文本
+              const chunk = new TextDecoder().decode(value);
+              console.log('接收到数据块:', chunk);
+              
+              // 处理SSE格式的数据
+              const lines = chunk.split('\n\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const content = line.substring(6);
+                  if (content === '[完成]') {
+                    console.log('导航指引完成');
+                  } else {
+                    // 累积接收到的文本
+                    receivedText += content + ' ';
+                    navigationResponse.value = receivedText;
+                  }
+                }
+              }
+            }
+            
+            // 3秒后再次拍照发送
+            setTimeout(captureAndSendFrame, 3000);
+            
+          } catch (error) {
+            console.error('处理流式响应时出错:', error);
+            setTimeout(captureAndSendFrame, 5000); // 5秒后重试
+          }
+        };
+        
+        // 开始处理流
+        processStream();
       })
       .catch(error => {
-        console.error('导航数据发送失败:', error)
+        console.error('导航数据发送失败:', error);
+        navigationResponse.value = `发送失败: ${error.message}`;
         // 发生错误时也尝试重新发送
-        setTimeout(captureAndSendFrame, 5000) // 5秒后重试
-      })
+        setTimeout(captureAndSendFrame, 5000); // 5秒后重试
+      });
     }
   } catch (error) {
-    console.error('拍照过程中出错:', error)
-    setTimeout(captureAndSendFrame, 2000) // 2秒后重试
+    console.error('拍照过程中出错:', error);
+    setTimeout(captureAndSendFrame, 2000); // 2秒后重试
   }
 }
 

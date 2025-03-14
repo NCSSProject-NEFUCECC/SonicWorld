@@ -72,32 +72,94 @@
     chatMessages.value=[];
     filled.value=false;
   }
-  const sendMessage = async () => {
-    if (!userInput.value.trim()) return
-    chatMessages.value.push({role:'user',content: userInput.value})
-    try {
-      loading.value = true
-  
-      // 使用消息管理函数(历史记录处理)
-      userInput.value = ''
-      // 调用服务
-      const response = await chat(chatMessages.value)
-      if(response==='领航模式'){
-        //跳转页面
-        router.push('/navigation')
-      }
-      // 更新消息记录
-      chatMessages.value.push({role:'assistant',content: response});
-      if(chatMessages.value.length >= 2*limitNum) {
+const sendMessage = async () => {
+  if (!userInput.value.trim()) return
+  const currentUserInput = userInput.value // 保存当前用户输入
+  chatMessages.value.push({role:'user',content: currentUserInput})
+  try {
+    loading.value = true
+
+    // 使用消息管理函数(历史记录处理)
+    userInput.value = ''
+    // 调用服务
+    // const response = await chat(chatMessages.value)
+    //fetch 流式接收字符串
+    // 使用fetch API发送请求并处理流式响应
+    fetch('http://localhost:5000/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: chatMessages.value
+        })
+      }).then(response=>{
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('无法获取响应流');
+        }
+        const handleStream=async()=>{
+          let receivedText = '';
+          // 创建一个初始的空消息
+          const assistantMessageIndex = chatMessages.value.push({role:'assistant',content: ''}) - 1;
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) {
+                console.log('流式响应接收完成');
+                break;
+              }
+              
+              // 将接收到的数据块转换为文本
+              const chunk = new TextDecoder().decode(value);
+              console.log('接收到数据块:', chunk);
+              
+              // 处理SSE格式的数据
+              const lines = chunk.split('\n\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const content = line.substring(6);
+                  if (content === '[完成]') {
+                    console.log('导航指引完成');
+                  } else {
+                    // 累积接收到的文本
+                    receivedText += content;
+                    // 更新最后一条消息的内容，而不是添加新消息
+                    chatMessages.value[assistantMessageIndex].content = receivedText;
+                  }
+                }
+              }
+            }
+        }
+        
+        // 调用处理流的函数
+        handleStream();
+             
+      })
+    // if(response==='领航模式'){
+    //   // alert(currentUserInput)
+    //   //跳转页面并传递用户最后一次输入
+    //   router.push({
+    //     path: '/navigation',
+    //     query: { lastInput: currentUserInput }
+    //   })
+    // }
+    // // 更新消息记录
+    // chatMessages.value.push({role:'assistant',content: response});
+    if(chatMessages.value.length >= 2*limitNum) {
       ElMessage.error('消息数量超过限制')
       filled.value=true;
     }
-    } catch (error) {
-      ElMessage.error('请求失败: ' + (error as Error).message)
-    } finally {
-      loading.value = false
-    }
+  } catch (error) {
+    ElMessage.error('请求失败: ' + (error as Error).message)
+  } finally {
+    loading.value = false
   }
+}
   </script>
   
   <style scoped src="@/assets/XiaoZhiComponent.css"></style>

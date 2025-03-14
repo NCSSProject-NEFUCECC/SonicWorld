@@ -19,6 +19,10 @@
           <el-icon><Search /></el-icon>
           <template #title>开始对话</template>
         </el-menu-item>
+        <el-menu-item index="2" @click="handleOpen('2', [])">
+          <el-icon><Compass /></el-icon>          
+          <template #title>领航模式</template>
+        </el-menu-item>
       </div>
       <el-divider></el-divider>
   
@@ -92,6 +96,7 @@
     DataAnalysis,
     Document,
     Lock,
+    Compass,
     Reading,
     Search,
     User,
@@ -104,7 +109,7 @@
   const isLoggedIn = ref(false)
   const menus = ref([
     { name: '开始对话', path: '/aichat' },
-    { name: '情景对话', path: '/scenariodialogue' },
+    { name: '领航模式', path: '/navigation' },
     { name: '政策跟踪', path: '/websitetrack' },
     {
       name: '政策分析',

@@ -50,12 +50,12 @@ def intent_recognition(message):
             messages=messages,
             result_format='message'
         )
-        print(llm_ir)
+        # print(llm_ir)
         intent = llm_ir.output.choices[0].message.content
         # print(intent)
         intent = json.loads(intent)
         intent = intent.get('intent')
-        print(intent)
+        print("任务：",intent)
         return intent
     except Exception as e:
         print(f"错误: {str(e)}")
@@ -74,14 +74,21 @@ def chat():
             return jsonify({"error": "消息不能为空"}), 400
         
         # 意图识别
-        if user_message == "后端启动领航":
-            ana_msg(user_message)
-            return jsonify({"response": "领航模式已启动"})
-        response = intent_recognition(user_messages)
-        # print(response)
-        response = call_llm_api(response,user_messages)
+        intent = intent_recognition(user_messages)
         
-        return jsonify({"response": response})
+        # 返回流式响应
+        from flask import Response, stream_with_context
+        
+        # 获取生成器函数
+        generator = call_llm_api(intent, user_messages)
+        
+        # 返回流式响应
+        return Response(stream_with_context(generator), 
+                       content_type='text/event-stream',
+                       headers={
+                           'Cache-Control': 'no-cache',
+                           'X-Accel-Buffering': 'no'
+                       })
     
     except Exception as e:
         print(f"错误: {str(e)}")
@@ -94,17 +101,16 @@ def navigate():
         data = request.json
         image_data = data.get('image', '')
         location = data.get('location', {})
-        
+        # user_message = data.get('lastInput')
+        # print("-"*10,user_message,"-"*10)
         if not image_data or not location:
-            return jsonify({"error": "图像或位置信息不能为空"}), 400
+            return jsonify({"error": "图像、位置信息或导航指令不能为空"}), 400
         
         # 保存接收到的图像
         image_path = save_image(image_data)
-        
-        # 调用导航函数处理图像和位置信息
-        navigation_result = process_navigation(image_path, location)
-        
-        return jsonify({"result": navigation_result})
+        # destination = ana_msg(user_message)
+        # 调用导航函数处理图像和位置信息，返回流式响应
+        return process_navigation(image_path, location)
     
     except Exception as e:
         print(f"导航错误: {str(e)}")
@@ -131,17 +137,28 @@ def save_image(image_data):
     return image_path
 
 # 处理导航请求
-def process_navigation(image_path, location):
+def process_navigation(image_path, location, destination=None):
     try:
         # 调用navigator模块处理导航请求
         from navigator import process_navigation_request
-        return process_navigation_request(image_path, location)
+        from flask import Response, stream_with_context
+        
+        # 获取生成器函数
+        generator = process_navigation_request(image_path, location, destination)
+        
+        # 返回流式响应
+        return Response(stream_with_context(generator()), 
+                       content_type='text/event-stream',
+                       headers={
+                           'Cache-Control': 'no-cache',
+                           'X-Accel-Buffering': 'no'
+                       })
     except Exception as e:
         print(f"处理导航请求错误: {str(e)}")
-        return "导航处理失败，请稍后再试"
+        return jsonify({"error": "导航处理失败，请稍后再试"}), 500
 
 
-def call_llm_api(llm_lr_response,history_msg):
+def call_llm_api(llm_lr_response, history_msg):
     image_path = r"img/default.png"
     base64_image = encode_image(image_path)
     # 解析传入的意图识别结果
@@ -151,37 +168,40 @@ def call_llm_api(llm_lr_response,history_msg):
         # print(message)
     except json.JSONDecodeError:
         print("JSON解析错误")
-        return "抱歉，系统处理出现错误。"
+        yield f"data: 抱歉，系统处理出现错误。\n\n"
+        return
     except Exception as e:
         print(f"数据处理错误: {str(e)}")
-        return "抱歉，系统处理出现错误。"
+        yield f"data: 抱歉，系统处理出现错误。\n\n"
+        return
+        
     llm_basechat = [
-                    {"role": "system", "content": "你是一位情感陪伴专家，你的任务是陪伴一位盲人聊天，在聊天中，你需要关注用户的情感需要，不要反复提及用户残疾的情况。"},
-                ]
+                {"role": "system", "content": "你是一位情感陪伴专家，你的任务是陪伴一位盲人聊天，在聊天中，你需要关注用户的情感需要，不要反复提及用户残疾的情况。"},
+            ]
     llm_visual_finder = [
-                    {"role": "system", "content": "你的用户是一位盲人,他正在寻找某建筑某地标或者某物。他现在拍摄了一张他正前方的照片，你需要分析图片和他的需求，告诉他他所寻找的东西在什么地方，他需要怎么做才能达到他的目的。此处给出两个实例：1、用户询问图书馆在哪，你应当回答图书馆的位置，并且告诉他应该怎么走才能到达图书馆；2、用户询问茄子在哪，并上传了一张冰箱内部的图片。你应当告诉他茄子在那一层的那一侧（例如：茄子在冰箱从下往上数第二层的最左边）。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。"},
-                ]
+                {"role": "system", "content": "你的用户是一位盲人,他正在寻找某建筑某地标或者某物。他现在拍摄了一张他正前方的照片，你需要分析图片和他的需求，告诉他他所寻找的东西在什么地方，他需要怎么做才能达到他的目的。此处给出两个实例：1、用户询问图书馆在哪，你应当回答图书馆的位置，并且告诉他应该怎么走才能到达图书馆；2、用户询问茄子在哪，并上传了一张冰箱内部的图片。你应当告诉他茄子在那一层的那一侧（例如：茄子在冰箱从下往上数第二层的最左边）。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。"},
+            ]
     llm_visual_recoder = [
-                    {"role": "system", "content": "你的用户是一位盲人,他向你传入了一张他拍摄的前方的图像，他想知道他的摄像头拍到了什么东西。你需要根据用户的需求，分析图片内容，做出符合用户需求的回答。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。"},
-                ]
+                {"role": "system", "content": "你的用户是一位盲人,他向你传入了一张他拍摄的前方的图像，他想知道他的摄像头拍到了什么东西。你需要根据用户的需求，分析图片内容，做出符合用户需求的回答。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。"},
+            ]
     llm_text_reader = [
-                    {"role": "system", "content": "你的用户是一位盲人，他现在正在阅读一段文字。你需要帮助用户阅读面前的文件，即你的任务是分析图像，找到用户阅读的东西，并将它们阅读出来，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
-                ]
+                {"role": "system", "content": "你的用户是一位盲人，他现在正在阅读一段文字。你需要帮助用户阅读面前的文件，即你的任务是分析图像，找到用户阅读的东西，并将它们阅读出来，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
+            ]
     llm_legal_consultant = [
-                    {"role": "system", "content": "你的用户是一位盲人，他现在正在寻求法律帮助。你需要帮助他找到合适的法律资源，并提供法律建议。"},
-                ]
+                {"role": "system", "content": "你的用户是一位盲人，他现在正在寻求法律帮助。你需要帮助他找到合适的法律资源，并提供法律建议。"},
+            ]
     llm_navigator = [
-                    {"role": "system", "content": "你的用户是一位盲人，他现在正在进行导航任务。你需要帮助他找到目的地，并提供导航建议。并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
-                ]
+                {"role": "system", "content": "你的用户是一位盲人，他现在正在进行导航任务。你需要帮助他找到目的地，并提供导航建议。并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
+            ]
+                
                     
-                        
     try:
         # 设置请求超时时间
         timeout = 30
-        
+        full_text = ""
         if intent == "普通聊天":
             try:
-                full_text = ""
+                print("已进入普通聊天部分")
                 llm_basechat.extend(history_msg)
                 completion = dashscope.Generation.call(
                     model="qwen-plus",
@@ -191,16 +211,32 @@ def call_llm_api(llm_lr_response,history_msg):
                         "enable_search": True
                     },
                     timeout=timeout,
-                    result_format='message'
+                    result_format='message',
+                    stream=True,
+                    # 增量式流式输出
+                    incremental_output=True
                 )
-                history_msg.append({"role": "assistant", "content": completion.output.choices[0].message.content})
-                # print(history_msg)
-                return completion.output.choices[0].message.content
+                for chunk in completion:
+                    try:
+                        text_content = chunk.output.choices[0].message.content
+                        if text_content:
+                            print(f"{text_content}")
+                            full_text += text_content
+                            yield f"data: {text_content}\n\n"
+                    except Exception as e:
+                        print(f"处理流式输出块错误: {str(e)}")
+                        continue
+                print()
+        
+                yield f"data: [完成]\n\n"
+                history_msg.append({"role": "assistant", "content": full_text})
+                print("响应全文：", full_text)
             except Exception as e:
                 print(f"普通聊天API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return "抱歉，服务连接出现问题，请稍后再试。"
-                return "抱歉，处理您的请求时出现了问题。"
+                    yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+                else:
+                    yield f"data: 抱歉，处理您的请求时出现了问题。\n\n"
                 
         elif intent == "查找某物的位置":
             try:
@@ -211,21 +247,38 @@ def call_llm_api(llm_lr_response,history_msg):
                 # 提取当前用户输入的文本部分并添加到数组中
                 user_message = history_msg[-1].get('content', '')
                 llm_visual_finder.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
+                # yield f"data: 正在分析图像...\n\n"
                 completion = dashscope.MultiModalConversation.call(
                     model="qwen-vl-max",
                     messages=llm_visual_finder,
                     temperature=0.6,
                     result_format='message',
-                    timeout=timeout
+                    timeout=timeout,
+                    stream=True,
+                    # 增量式流式输出
+                    incremental_output=True
                 )
-                history_msg.append({"role": "assistant", "content": completion.output.choices[0].message.content[0].get('text')})
-                # print(history_msg)
-                return completion.output.choices[0].message.content[0].get('text')
+                for chunk in completion:
+                    try:
+                        text_content = chunk.output.choices[0].message.content[0].get('text', '')
+                        if text_content:
+                            print(f"{text_content}")
+                            full_text += text_content
+                            yield f"data: {text_content}\n\n"
+                    except Exception as e:
+                        print(f"处理流式输出块错误: {str(e)}")
+                        continue
+                print()
+        
+                yield f"data: [完成]\n\n"
+                history_msg.append({"role": "assistant", "content": full_text})
+                print("响应全文：", full_text)
             except Exception as e:
                 print(f"查找位置API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return "抱歉，服务连接出现问题，请稍后再试。"
-                return "抱歉，无法处理位置查找请求。"
+                    yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+                else:
+                    yield f"data: 抱歉，无法处理位置查找请求。\n\n"
 
         elif intent == "识别前方的情况":
             try:
@@ -236,21 +289,38 @@ def call_llm_api(llm_lr_response,history_msg):
                 # 提取当前用户输入的文本部分并添加到数组中
                 user_message = history_msg[-1].get('content', '')
                 llm_visual_recoder.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
+                yield f"data: 正在分析图像...\n\n"
                 completion = dashscope.MultiModalConversation.call(
                     model="qwen-vl-max",
                     messages=llm_visual_recoder,
                     temperature=0.6,
                     timeout=timeout,
-                    result_format='message'
+                    result_format='message',
+                    stream=True,
+                    # 增量式流式输出
+                    incremental_output=True
                 )
-                history_msg.append({"role": "assistant", "content": completion.output.choices[0].message.content[0].get('text')})
-                # print(history_msg)
-                return completion.output.choices[0].message.content[0].get('text')
+                for chunk in completion:
+                    try:
+                        text_content = chunk.output.choices[0].message.content[0].get('text', '')
+                        if text_content:
+                            print(f"{text_content}")
+                            full_text += text_content
+                            yield f"data: {text_content}\n\n"
+                    except Exception as e:
+                        print(f"处理流式输出块错误: {str(e)}")
+                        continue
+                print()
+        
+                yield f"data: [完成]\n\n"
+                history_msg.append({"role": "assistant", "content": full_text})
+                print("响应全文：", full_text)
             except Exception as e:
                 print(f"识别前方的情况API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return "抱歉，服务连接出现问题，请稍后再试。"
-                return "抱歉，无法处理识别前方的情况。"
+                    yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+                else:
+                    yield f"data: 抱歉，无法处理识别前方的情况。\n\n"
 
         elif intent == "阅读文字":
             try:
@@ -261,49 +331,88 @@ def call_llm_api(llm_lr_response,history_msg):
                 # 提取当前用户输入的文本部分并添加到数组中
                 user_message = history_msg[-1].get('content', '')
                 llm_text_reader.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
+                yield f"data: 正在分析文字内容...\n\n"
                 completion = dashscope.MultiModalConversation.call(
                     model="qwen-vl-max",
                     messages=llm_text_reader,
                     temperature=0.8,
                     result_format='message',
-                    timeout=timeout
+                    timeout=timeout,
+                    stream=True,
+                    # 增量式流式输出
+                    incremental_output=True
                 )
-                history_msg.append({"role": "assistant", "content": completion.output.choices[0].message.content[0].get('text')})
-                return completion.output.choices[0].message.content[0].get('text')
+                for chunk in completion:
+                    try:
+                        text_content = chunk.output.choices[0].message.content[0].get('text', '')
+                        if text_content:
+                            print(f"{text_content}")
+                            full_text += text_content
+                            yield f"data: {text_content}\n\n"
+                    except Exception as e:
+                        print(f"处理流式输出块错误: {str(e)}")
+                        continue
+                print()
+        
+                yield f"data: [完成]\n\n"
+                history_msg.append({"role": "assistant", "content": full_text})
+                print("响应全文：", full_text)
             except Exception as e:
                 print(f"文字阅读API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return "抱歉，服务连接出现问题，请稍后再试。"
-                return "抱歉，无法处理文字阅读请求。"
+                    yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+                else:
+                    yield f"data: 抱歉，无法处理文字阅读请求。\n\n"
                 
         elif intent == "法律咨询":
             try:
+                yield f"data: 正在处理法律咨询...\n\n"
                 llm_legal_consultant.extend(history_msg)
                 completion = dashscope.Generation.call(
                     model="farui-plus",
                     messages=llm_legal_consultant,
                     temperature=0.9,
                     timeout=timeout,
-                    result_format='message'
+                    result_format='message',
+                    stream=True,
+                    # 增量式流式输出
+                    incremental_output=True
                 )
-                print(completion)
-                history_msg.append({"role": "assistant", "content": completion.output.choices[0].message.content})
-                return completion.output.choices[0].message.content
+                for chunk in completion:
+                    try:
+                        text_content = chunk.output.choices[0].message.content
+                        if text_content:
+                            print(f"{text_content}")
+                            full_text += text_content
+                            yield f"data: {text_content}\n\n"
+                    except Exception as e:
+                        print(f"处理流式输出块错误: {str(e)}")
+                        continue
+                print()
+        
+                yield f"data: [完成]\n\n"
+                history_msg.append({"role": "assistant", "content": full_text})
+                print("响应全文：", full_text)
             except Exception as e:
                 print(f"法律咨询API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return "抱歉，服务连接出现问题，请稍后再试。"
-                return "抱歉，无法处理法律咨询请求。"
+                    yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+                else:
+                    yield f"data: 抱歉，无法处理法律咨询请求。\n\n"
         elif intent == "领航任务":
             try:
-                return "领航模式"
+                yield f"data: 正在启动领航模式...\n\n"
+                yield f"data: 领航模式已启动\n\n"
+                yield f"data: [完成]\n\n"
             except Exception as e:
                 print(f"领航任务API调用错误: {str(e)}")
                 if "Connection" in str(e):
-                    return "抱歉，服务连接出现问题，请稍后再试。"
-                return "抱歉，无法处理领航任务请求。"
+                    yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+                else:
+                    yield f"data: 抱歉，无法处理领航任务请求。\n\n"
         else:
-            return "抱歉，我无法理解您的意图。"
+            yield f"data: 抱歉，我无法理解您的意图。\n\n"
+            yield f"data: [完成]\n\n"
 
     except Exception as e:
         print(f"整体API调用错误: {str(e)}")
