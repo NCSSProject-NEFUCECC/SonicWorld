@@ -50,6 +50,8 @@
           <el-button @click="sendMessage" :disabled="filled">发送</el-button>
         </div>
       </div>
+      <!-- 隐藏的视频元素用于拍照 -->
+      <video ref="videoElement" style="display: none;" autoplay playsinline></video>
     </div>
   </template>
   
@@ -57,7 +59,7 @@
   import type { Message } from '@/datasource/types'
   import { chat } from '@/services/AIService'
   import { ElMessage } from 'element-plus'
-  import { ref } from 'vue'
+  import { ref, onMounted, onUnmounted } from 'vue'
   import { useRouter } from 'vue-router'
   
   const router = useRouter()
@@ -72,6 +74,74 @@
     chatMessages.value=[];
     filled.value=false;
   }
+
+  // 视频和拍照相关
+  const videoElement = ref<HTMLVideoElement | null>(null)
+  let mediaStream: MediaStream | null = null
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+
+  // 初始化相机
+  const initCamera = async () => {
+    try {
+      // 请求相机权限并获取视频流
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "environment" // 指定使用后置摄像头
+        }
+      })
+      
+      // 将视频流设置到video元素
+      if (videoElement.value) {
+        videoElement.value.srcObject = mediaStream;
+        
+        // 设置canvas尺寸 - 高度固定为480，宽度按比例缩放
+        canvas.height = 480;
+        // 假设原始比例是16:9，保持这个比例
+        canvas.width = Math.round(480 * (16/9));
+      }
+    } catch (error) {
+      console.error('相机访问失败:', error);
+    }
+  }
+
+  // 捕获图像并发送到后端
+  const captureAndSendImage = async (intent: string) => {
+    try {
+      if (!videoElement.value || !context) {
+        console.error('视频元素或Canvas上下文不可用');
+        return null;
+      }
+      
+      // 在canvas上绘制当前视频帧，并按照指定尺寸压缩
+      context.drawImage(videoElement.value, 0, 0, canvas.width, canvas.height);
+      
+      // 将canvas内容转换为base64编码的图像，压缩质量为0.7
+      const imageData = canvas.toDataURL('image/jpeg', 0.7);
+      console.log('成功捕获图像，准备发送到后端');
+      
+      return imageData;
+    } catch (error) {
+      console.error('拍照过程中出错:', error);
+      return null;
+    }
+  }
+
+  // 组件挂载时初始化相机
+  onMounted(() => {
+    initCamera();
+  })
+
+  // 组件卸载时清理资源
+  onUnmounted(() => {
+    // 清理相机资源
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((track) => track.stop());
+    }
+  })
+
 const sendMessage = async () => {
   if (!userInput.value.trim()) return
   const currentUserInput = userInput.value // 保存当前用户输入
@@ -84,7 +154,7 @@ const sendMessage = async () => {
     // 调用服务
     // const response = await chat(chatMessages.value)
     //fetch 流式接收字符串
-    // 使用fetch API发送请求并处理流式响应
+    // 使用fetch API发送请求并处理流式响应 101.42.16.55:5000
     fetch('http://101.42.16.55:5000/api/chat', {
         method: 'POST',
         headers: {
@@ -93,7 +163,7 @@ const sendMessage = async () => {
         body: JSON.stringify({
           messages: chatMessages.value
         })
-      }).then(response=>{
+      }).then(async response => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
@@ -132,6 +202,75 @@ const sendMessage = async () => {
                     chatMessages.value[assistantMessageIndex].content = receivedText;
                   }
                 }
+              }
+            }
+
+            // 检查是否需要拍照并发送图片
+            const lastMessage = chatMessages.value[assistantMessageIndex].content;
+            if (lastMessage.includes('正在分析图像') || 
+                lastMessage.includes('正在分析文字内容')) {
+              // 捕获图像
+              const imageData = await captureAndSendImage(lastMessage.includes('正在分析文字内容') ? '阅读文字' : '识别前方的情况');
+              
+              if (imageData) {
+                // 发送图像到后端
+                fetch('http://101.42.16.55:5000/api/chat', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    messages: chatMessages.value,
+                    image: imageData
+                  })
+                }).then(imgResponse => {
+                  // 处理图像识别响应
+                  if (!imgResponse.ok) {
+                    throw new Error(`图像处理请求失败: ${imgResponse.status}`);
+                  }
+                  
+                  const imgReader = imgResponse.body?.getReader();
+                  if (!imgReader) {
+                    throw new Error('无法获取图像处理响应流');
+                  }
+                  
+                  // 处理图像识别的流式响应
+                  let imgReceivedText = '';
+                  const processImgStream = async () => {
+                    while (true) {
+                      const { done, value } = await imgReader.read();
+                      
+                      if (done) {
+                        console.log('图像处理响应接收完成');
+                        break;
+                      }
+                      
+                      const chunk = new TextDecoder().decode(value);
+                      console.log('接收到图像处理数据块:', chunk);
+                      
+                      const lines = chunk.split('\n\n');
+                      for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                          const content = line.substring(6);
+                          if (content === '[完成]') {
+                            console.log('图像处理完成');
+                          } else {
+                            imgReceivedText += content;
+                            chatMessages.value[assistantMessageIndex].content = imgReceivedText;
+                          }
+                        }
+                      }
+                    }
+                  };
+                  
+                  processImgStream();
+                }).catch(error => {
+                  console.error('图像处理请求失败:', error);
+                  ElMessage.error('图像处理失败: ' + error.message);
+                });
+              } else {
+                console.error('图像捕获失败');
+                chatMessages.value[assistantMessageIndex].content += '\n[图像捕获失败，请重试]';
               }
             }
         }

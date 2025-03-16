@@ -65,9 +65,11 @@ def intent_recognition(message):
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
+        # time.sleep(50)
         data = request.json
         user_messages = data.get('messages', '')
         user_message = user_messages[-1].get('content', '')
+        image_data = data.get('image', '')
         # print(len(user_message),user_message)
         if not user_message:
             print("消息不能为空")
@@ -80,7 +82,12 @@ def chat():
         from flask import Response, stream_with_context
         
         # 获取生成器函数
-        generator = call_llm_api(intent, user_messages)
+        image_path = None
+        if image_data:
+            # 如果有图像数据，保存图像
+            image_path = save_image(image_data)
+        
+        generator = call_llm_api(intent, user_messages, image_path)
         
         # 返回流式响应
         return Response(stream_with_context(generator), 
@@ -128,7 +135,7 @@ def save_image(image_data):
         os.makedirs('img')
     
     # 使用固定文件名保存图片，覆盖之前的图片
-    image_path = os.path.join('img', "navigation.jpg")
+    image_path = os.path.join('img', "rec.png")
     
     # 解码并保存图像
     with open(image_path, "wb") as image_file:
@@ -158,8 +165,11 @@ def process_navigation(image_path, location, destination=None):
         return jsonify({"error": "导航处理失败，请稍后再试"}), 500
 
 
-def call_llm_api(llm_lr_response, history_msg):
-    image_path = r"img/default.png"
+def call_llm_api(llm_lr_response, history_msg, image_path=None):
+    # 如果没有提供图像路径，使用默认图像
+    if not image_path:
+        image_path = r"img/default.png"
+    
     base64_image = encode_image(image_path)
     # 解析传入的意图识别结果
     try:

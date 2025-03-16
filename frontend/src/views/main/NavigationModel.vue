@@ -98,7 +98,8 @@ const initCamera = async () => {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
         width: { ideal: 1280 },
-        height: { ideal: 720 }
+        height: { ideal: 720 },
+        facingMode: "environment" // 指定使用后置摄像头
       }
     })
     
