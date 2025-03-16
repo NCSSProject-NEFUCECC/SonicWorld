@@ -197,7 +197,7 @@ const captureAndSendFrame = () => {
       navigationResponse.value = '正在分析环境...';
       
       // 使用fetch API发送请求并处理流式响应
-      fetch('http://localhost:5000/api/navigate', {
+      fetch('http://101.42.16.55:5000/api/navigate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -217,7 +217,7 @@ const captureAndSendFrame = () => {
         if (!reader) {
           throw new Error('无法获取响应流');
         }
-        
+        navigationResponse.value = '';
         // 处理流式响应
         const processStream = async () => {
           try {
@@ -252,7 +252,7 @@ const captureAndSendFrame = () => {
             }
             
             // 3秒后再次拍照发送
-            setTimeout(captureAndSendFrame, 3000);
+            setTimeout(captureAndSendFrame, 500);
             
           } catch (error) {
             console.error('处理流式响应时出错:', error);

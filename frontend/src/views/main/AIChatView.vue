@@ -85,7 +85,7 @@ const sendMessage = async () => {
     // const response = await chat(chatMessages.value)
     //fetch 流式接收字符串
     // 使用fetch API发送请求并处理流式响应
-    fetch('http://localhost:5000/api/chat', {
+    fetch('http://101.42.16.55:5000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

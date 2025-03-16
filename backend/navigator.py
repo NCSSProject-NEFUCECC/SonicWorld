@@ -168,7 +168,6 @@ def process_navigation_request(image_path, current_location, destination=None):
                 ]
         
         # 调用多模态模型
-            yield f"data: 正在分析环境图像...\n\n"
             response_stream = dashscope.MultiModalConversation.call(
                 model="qwen-vl-max",
                 messages=messages,
