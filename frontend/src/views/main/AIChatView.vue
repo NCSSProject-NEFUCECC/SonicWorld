@@ -151,17 +151,19 @@ const sendMessage = async () => {
 
     // 使用消息管理函数(历史记录处理)
     userInput.value = ''
-    // 调用服务
-    // const response = await chat(chatMessages.value)
-    //fetch 流式接收字符串
-    // 使用fetch API发送请求并处理流式响应 101.42.16.55:5000
+    
+    // 先捕获图像
+    const imageData = await captureAndSendImage('默认意图');
+    
+    // 使用fetch API发送请求并处理流式响应
     fetch('http://101.42.16.55:5000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          messages: chatMessages.value
+          messages: chatMessages.value,
+          image: imageData // 每次请求都发送图像数据
         })
       }).then(async response => {
         if (!response.ok) {
@@ -204,75 +206,8 @@ const sendMessage = async () => {
                 }
               }
             }
-
-            // 检查是否需要拍照并发送图片
-            const lastMessage = chatMessages.value[assistantMessageIndex].content;
-            if (lastMessage.includes('正在分析图像') || 
-                lastMessage.includes('正在分析文字内容')) {
-              // 捕获图像
-              const imageData = await captureAndSendImage(lastMessage.includes('正在分析文字内容') ? '阅读文字' : '识别前方的情况');
-              
-              if (imageData) {
-                // 发送图像到后端
-                fetch('http://101.42.16.55:5000/api/chat', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    messages: chatMessages.value,
-                    image: imageData
-                  })
-                }).then(imgResponse => {
-                  // 处理图像识别响应
-                  if (!imgResponse.ok) {
-                    throw new Error(`图像处理请求失败: ${imgResponse.status}`);
-                  }
-                  
-                  const imgReader = imgResponse.body?.getReader();
-                  if (!imgReader) {
-                    throw new Error('无法获取图像处理响应流');
-                  }
-                  
-                  // 处理图像识别的流式响应
-                  let imgReceivedText = '';
-                  const processImgStream = async () => {
-                    while (true) {
-                      const { done, value } = await imgReader.read();
-                      
-                      if (done) {
-                        console.log('图像处理响应接收完成');
-                        break;
-                      }
-                      
-                      const chunk = new TextDecoder().decode(value);
-                      console.log('接收到图像处理数据块:', chunk);
-                      
-                      const lines = chunk.split('\n\n');
-                      for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                          const content = line.substring(6);
-                          if (content === '[完成]') {
-                            console.log('图像处理完成');
-                          } else {
-                            imgReceivedText += content;
-                            chatMessages.value[assistantMessageIndex].content = imgReceivedText;
-                          }
-                        }
-                      }
-                    }
-                  };
-                  
-                  processImgStream();
-                }).catch(error => {
-                  console.error('图像处理请求失败:', error);
-                  ElMessage.error('图像处理失败: ' + error.message);
-                });
-              } else {
-                console.error('图像捕获失败');
-                chatMessages.value[assistantMessageIndex].content += '\n[图像捕获失败，请重试]';
-              }
-            }
+            
+            // 移除原有的图像处理逻辑，因为每次请求都已经包含图像
         }
         
         // 调用处理流的函数

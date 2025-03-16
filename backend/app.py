@@ -65,7 +65,6 @@ def intent_recognition(message):
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
-        # time.sleep(50)
         data = request.json
         user_messages = data.get('messages', '')
         user_message = user_messages[-1].get('content', '')
