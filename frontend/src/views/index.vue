@@ -27,18 +27,18 @@ import HeaderView from '@/views/header/index.vue'
   position: fixed;
   left: 0;
   top: 0;
-  width: 64px;
+  width: 40px;
   height: 100vh;
   background-color: #fff;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.05);
   z-index: 1000;
 }
 
 .main-content {
   flex: 1;
-  margin-left: 64px;
+  margin-left: 50px;
   align-content: center;
-  width: calc(100% - 64px);
-  min-height: 100vh;
+  width: calc(100% - 50px);
+  height: 100vh;
 }
-</style>
+</style>    
