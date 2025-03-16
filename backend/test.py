@@ -3,7 +3,7 @@ import dashscope
 import json
 import os
 import base64
-
+dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
 
 def get_location_info(address):
     """向高德地图API发送请求获取地理编码信息"""
@@ -53,7 +53,7 @@ def get_route_info(start, end):
         # response.raise_for_status()  # 检查请求是否成功
         # if response.status == 1:
         res = response.json()
-        # print("get_route_info的返回值是：",res)
+        print("get_route_info的返回值是：",res)
         return res['route']['paths'][0]['steps'][0]['instruction']
     except Exception as e:
         print(f"get_route_info请求失败: {e}")
@@ -208,3 +208,12 @@ def process_navigation_request(image_path, current_location, destination=None):
         
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
+
+location = "东北林业大学9学生公寓"
+destination = "东北林业大学图书馆"
+
+location_lal = ana_msg(location)
+destination_lal = ana_msg(destination)
+print("得到的经纬度为：",location_lal,type(location_lal),destination_lal,type(destination_lal))
+
+print(get_route_info(location_lal,destination_lal))
