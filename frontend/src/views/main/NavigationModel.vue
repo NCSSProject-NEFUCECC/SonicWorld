@@ -97,8 +97,8 @@ const initCamera = async () => {
     // 请求相机权限并获取视频流
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
         facingMode: "environment" // 指定使用后置摄像头
       }
     })
@@ -112,8 +112,8 @@ const initCamera = async () => {
       console.log('视频流已设置到video元素');
       
       // 设置canvas尺寸
-      canvas.width = 1280;
-      canvas.height = 720;
+      canvas.width = 640;
+      canvas.height = 480;
       cameraReady.value = true;
       cameraStatusMessage.value = '相机初始化成功';
       console.log('相机初始化成功');
@@ -253,7 +253,7 @@ const captureAndSendFrame = () => {
             }
             
             // 3秒后再次拍照发送
-            setTimeout(captureAndSendFrame, 500);
+            setTimeout(captureAndSendFrame, 3000);
             
           } catch (error) {
             console.error('处理流式响应时出错:', error);
@@ -302,7 +302,7 @@ onUnmounted(() => {
 <style scoped>
 .camera-container {
   width: 100%;
-  height: 20vh;
+  height: 60vh;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -313,7 +313,7 @@ onUnmounted(() => {
 video {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .location-info {
@@ -322,9 +322,9 @@ video {
   left: 10px;
   background-color: rgba(0, 0, 0, 0.5);
   color: white;
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 10px;
 }
 
 .navigation-response {
@@ -334,10 +334,10 @@ video {
   right: 10px;
   background-color: rgba(0, 0, 0, 0.7);
   color: white;
-  padding: 10px;
+  padding: 8px;
   border-radius: 5px;
-  font-size: 14px;
-  max-height: 60%;
+  font-size: 12px;
+  max-height: 50%;
   overflow-y: auto;
 }
 
@@ -348,9 +348,9 @@ video {
   transform: translate(-50%, -50%);
   background-color: rgba(0, 0, 0, 0.7);
   color: white;
-  padding: 10px 20px;
+  padding: 8px 12px;
   border-radius: 5px;
-  font-size: 16px;
+  font-size: 14px;
   z-index: 10;
 }
 
@@ -361,9 +361,9 @@ video {
   transform: translate(-50%, -50%);
   background-color: rgba(255, 0, 0, 0.7);
   color: white;
-  padding: 10px 20px;
+  padding: 8px 12px;
   border-radius: 5px;
-  font-size: 16px;
+  font-size: 14px;
   z-index: 10;
   max-width: 80%;
   text-align: center;
