@@ -7,6 +7,8 @@ import base64
 import time
 import dashscope
 from navigator import ana_msg
+from chater import convert_to_multimodal, intent_recognition
+from reader import synthesizer
 
 app = Flask(__name__)
 CORS(app)
@@ -14,53 +16,12 @@ CORS(app)
 
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
 
+user_messages_list = []
+
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
-# 将普通文本消息转换为多模态格式
-def convert_to_multimodal(messages):
-    converted_messages = []
-    for msg in messages:
-        if msg.get('role') == 'user':
-            # 将用户消息转换为多模态格式
-            converted_msg = {
-                'role': 'user',
-                'content': [
-                    {'type': 'text', 'text': msg.get('content', '')}
-                ]
-            }
-            converted_messages.append(converted_msg)
-        else:
-            # 保持其他角色消息不变
-            converted_messages.append(msg)
-    return converted_messages
-
-def intent_recognition(message):
-    try:
-        # 设置超时时间
-        timeout = 30
-        messages = [
-                {'role': 'system', 'content': '你是一个意图分类器，严格按以下规则处理输入：1.分类范围[普通聊天][查找某物的位置][阅读文字][法律咨询][识别前方的情况][领航任务]；2.领航任务包含引导移动指令如"带路""扶我到"或是用户直接说打开领航模式等；3.结合全部历史消息解析指代（例：前文提到书后说"读它"→阅读文字）；4.输出严格遵循{"intent":"","msg":""}格式,不要越俎代庖擅自向用户提供建议；5.新意图/低置信度(＜80%)归普通聊天；示例：用户输入"带我去电梯"→{"intent":"领航任务","msg":"带我去电梯"}；用户输入"这是什么牌子"→{"intent":"识别前方的情况","msg":"这是什么牌子"}。务必注意！！你的输出只能是JSON格式，且不能有多余的文字,不要自作主张向用户提供建议，那是其他人的任务。你擅自将输出中添加其他东西会导致整个系统失效，务必执行好自己的任务，不要自作主张，不要越俎代庖！'}
-            ]
-        messages.extend(message)
-        # print(messages)
-        llm_ir = dashscope.Generation.call(
-            model="qwen2.5-14b-instruct-1m",
-            messages=messages,
-            result_format='message'
-        )
-        # print(llm_ir)
-        intent = llm_ir.output.choices[0].message.content
-        # print(intent)
-        intent = json.loads(intent)
-        intent = intent.get('intent')
-        print("任务：",intent)
-        return intent
-    except Exception as e:
-        print(f"错误: {str(e)}")
-        # 如果意图识别失败，默认返回普通聊天意图
-        return jsonify({"intent":"普通聊天","msg":message})
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -95,6 +56,26 @@ def chat():
                            'Cache-Control': 'no-cache',
                            'X-Accel-Buffering': 'no'
                        })
+    except Exception as e:
+        print(f"错误: {str(e)}")
+        return jsonify({"error": "服务器内部错误"}), 500
+
+
+@app.route('/api/tts', methods=['POST'])
+def text_to_speech():
+    try:
+        data = request.json
+        text = data.get('text', '')
+        if not text:
+            return jsonify({"error": "文本不能为空"}), 400
+        
+        # 调用reader.py中的函数进行文本到语音的转换
+        from reader import text_to_speech_stream
+        return text_to_speech_stream(text)
+    
+    except Exception as e:
+        print(f"文本转语音错误: {str(e)}")
+        return jsonify({"error": "文本转语音服务器内部错误"}), 500
     
     except Exception as e:
         print(f"错误: {str(e)}")
@@ -107,16 +88,16 @@ def navigate():
         data = request.json
         image_data = data.get('image', '')
         location = data.get('location', {})
-        # user_message = data.get('lastInput')
-        # print("-"*10,user_message,"-"*10)
+        user_message = user_messages_list[-1]
+        print("-"*10,user_message,"-"*10)
         if not image_data or not location:
             return jsonify({"error": "图像、位置信息或导航指令不能为空"}), 400
         
         # 保存接收到的图像
         image_path = save_image(image_data)
-        # destination = ana_msg(user_message)
+        destination = ana_msg(user_message)
         # 调用导航函数处理图像和位置信息，返回流式响应
-        return process_navigation(image_path, location)
+        return process_navigation(image_path, location,destination)
     
     except Exception as e:
         print(f"导航错误: {str(e)}")
@@ -183,7 +164,6 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
         print(f"数据处理错误: {str(e)}")
         yield f"data: 抱歉，系统处理出现错误。\n\n"
         return
-        
     llm_basechat = [
                 {"role": "system", "content": "你是一位情感陪伴专家，你的任务是陪伴一位盲人聊天，在聊天中，你需要关注用户的情感需要，不要反复提及用户残疾的情况。"},
             ]
@@ -201,8 +181,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
             ]
     llm_navigator = [
                 {"role": "system", "content": "你的用户是一位盲人，他现在正在进行导航任务。你需要帮助他找到目的地，并提供导航建议。并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
-            ]
-                
+            ]                
                     
     try:
         # 设置请求超时时间
@@ -231,6 +210,9 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         if text_content:
                             print(f"{text_content}")
                             full_text += text_content
+                            # 使用语音合成器将文本转换为语音
+                            synthesizer.streaming_call(text_content)
+                            # 发送文本内容到前端
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
@@ -272,6 +254,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         text_content = chunk.output.choices[0].message.content[0].get('text', '')
                         if text_content:
                             print(f"{text_content}")
+                            synthesizer.streaming_call(text_content)
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
@@ -314,6 +297,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         text_content = chunk.output.choices[0].message.content[0].get('text', '')
                         if text_content:
                             print(f"{text_content}")
+                            synthesizer.streaming_call(text_content)
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
@@ -356,6 +340,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         text_content = chunk.output.choices[0].message.content[0].get('text', '')
                         if text_content:
                             print(f"{text_content}")
+                            synthesizer.streaming_call(text_content)
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
@@ -393,6 +378,9 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         if text_content:
                             print(f"{text_content}")
                             full_text += text_content
+                            # 使用语音合成器将文本转换为语音
+                            synthesizer.streaming_call(text_content)
+                            # 发送文本内容到前端
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
@@ -410,9 +398,8 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                     yield f"data: 抱歉，无法处理法律咨询请求。\n\n"
         elif intent == "领航任务":
             try:
-                yield f"data: 正在启动领航模式...\n\n"
-                yield f"data: 领航模式已启动\n\n"
-                yield f"data: [完成]\n\n"
+                user_messages_list.append(history_msg[-1]['content'])
+                yield f"data: 领航模式\n\n"
             except Exception as e:
                 print(f"领航任务API调用错误: {str(e)}")
                 if "Connection" in str(e):

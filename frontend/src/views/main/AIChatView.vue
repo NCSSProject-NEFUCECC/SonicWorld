@@ -63,6 +63,7 @@
 <script setup lang="ts">
 import type { Message } from '@/datasource/types'
 import { chat } from '@/services/AIService'
+import { streamTextToSpeech } from '@/services/AudioService'
 import { ElMessage } from 'element-plus'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -160,8 +161,8 @@ try {
   // 先捕获图像
   const imageData = await captureAndSendImage('默认意图');
   
-  // 使用fetch API发送请求并处理流式响应
-  fetch('http://101.42.16.55:5000/api/chat', {
+  // 使用fetch API发送请求并处理流式响应 101.42.16.55:5000
+  fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -207,28 +208,35 @@ try {
                   receivedText += content;
                   // 更新最后一条消息的内容，而不是添加新消息
                   chatMessages.value[assistantMessageIndex].content = receivedText;
+                  
+                  // 将文本转换为语音并播放
+                  try {
+                    // 只对新增的内容进行语音合成
+                    streamTextToSpeech(content);
+                  } catch (error) {
+                    console.error('语音播放错误:', error);
+                  }
                 }
               }
             }
           }
           
-          // 移除原有的图像处理逻辑，因为每次请求都已经包含图像
+          if(receivedText==='领航模式'){
+          // alert(currentUserInput)
+          //跳转页面并传递用户最后一次输入
+            router.push({
+              path: '/navigation',
+            })
+          }
+
+          // 处理完所有数据后，更新最后一条消息的内容
+          chatMessages.value[assistantMessageIndex].content = receivedText;
       }
       
       // 调用处理流的函数
       handleStream();
            
     })
-  // if(response==='领航模式'){
-  //   // alert(currentUserInput)
-  //   //跳转页面并传递用户最后一次输入
-  //   router.push({
-  //     path: '/navigation',
-  //     query: { lastInput: currentUserInput }
-  //   })
-  // }
-  // // 更新消息记录
-  // chatMessages.value.push({role:'assistant',content: response});
   if(chatMessages.value.length >= 2*limitNum) {
     ElMessage.error('消息数量超过限制')
     filled.value=true;
@@ -294,4 +302,4 @@ display: flex;
 flex: 1;
 margin-right: 10px;
 }
-</style>    
+</style>

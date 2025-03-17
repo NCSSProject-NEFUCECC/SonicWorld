@@ -3,6 +3,9 @@ import dashscope
 import json
 import os
 import base64
+import sys
+from reader import text_to_speech_stream  # 导入语音合成功能
+from reader import synthesizer
 
 
 def get_location_info(address):
@@ -17,7 +20,7 @@ def get_location_info(address):
     try:
         response = requests.get(base_url, params=params)
         response.raise_for_status()  # 检查请求是否成功
-        print("get_location_info的返回值是：",response.json(),type(response.json()))
+        # print("get_location_info的返回值是：",response.json(),type(response.json()))
         
         return response.json()
     except requests.RequestException as e:
@@ -54,6 +57,7 @@ def get_route_info(start, end):
         # if response.status == 1:
         res = response.json()
         # print("get_route_info的返回值是：",res)
+        # print("提取到第一步：",res['route']['paths'][0]['steps'][0]['instruction'])
         return res['route']['paths'][0]['steps'][0]['instruction']
     except Exception as e:
         print(f"get_route_info请求失败: {e}")
@@ -136,14 +140,18 @@ def process_navigation_request(image_path, current_location, destination=None):
             # 如果提供了目标地点，获取路线信息
             if destination:
                 # 使用navigator函数分析目标地点并获取经纬度
-                destination_location = ana_msg(destination)
+                destination_location = destination
                 if destination_location:
                     # 目标位置经纬度字符串转为列表
-                    dest_lng, dest_lat = destination_location.split(",")
+                    dest_lng, dest_lat = destination_location[0], destination_location[1]
                     
                     # 获取路线指引
-                    route_info = get_route_info((current_longitude, current_latitude), (dest_lng, dest_lat))
-                    yield f"data: 获取到路线信息: {route_info}\n\n"
+                    try:
+                        route_info = get_route_info((current_longitude, current_latitude), (dest_lng, dest_lat))
+                        print("获取到导航信息",route_info)
+                    except Exception as e:
+                        route_info = f"获取路线信息失败: {str(e)}"
+                    # yield f"data: 获取到路线信息: {route_info}\n\n"
             
                 messages = [
                     {
@@ -190,16 +198,22 @@ def process_navigation_request(image_path, current_location, destination=None):
                     text_content = chunk.output.choices[0].message.content[0].get('text', '')
                     if text_content:
                         print(f"{text_content}", end="")
+                        # 发送文本内容
                         yield f"data: {text_content}\n\n"
+                        # 同时发送语音标记，前端可以据此播放语音
+                        synthesizer.streaming_call(text_content)
                 except Exception as e:
                     print(f"处理流式输出块错误: {str(e)}")
                     continue
             print()
-        
+            
+            
             yield f"data: [完成]\n\n"
         
         except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
             error_msg = f"导航处理错误: {str(e)}"
+            print(f"错误行号: {exc_tb.tb_lineno}")
             print(error_msg)
             yield f"data: {error_msg}\n\n"
     
