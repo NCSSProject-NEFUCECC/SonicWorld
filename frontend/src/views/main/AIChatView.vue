@@ -16,7 +16,7 @@
       <img src="@/assets/xiaozhi.png" alt="小智AI" class="xiaozhi-image" />
       <p>你好！我是智能导盲助手，有什么问题尽管问我吧。</p>
     </div>
-    <div class="chat-container">
+    <div class="chat-container"  style="flex: 1;"  ref="chatContainer">
       <div class="chat-messages">
         <div
           v-for="(message, index) in chatMessages"
@@ -64,11 +64,11 @@
 import type { Message } from '@/datasource/types'
 import { chat } from '@/services/AIService'
 import { ElMessage } from 'element-plus'
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-
+const chatContainer = ref<HTMLElement | null>(null)
 // 小智AI对话相关
 const chatMessages = ref<Message[]>([])
 const userInput = ref('')
@@ -217,6 +217,10 @@ try {
               }
             }
           }
+          await nextTick(); // 等待 DOM 更新
+  if (chatContainer.value) {
+    chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+  }
       }
       
       // 调用处理流的函数
@@ -234,6 +238,7 @@ try {
   loading.value = false
 }
 }
+
 </script>
 
 <style scoped >
@@ -250,6 +255,18 @@ margin-right: 10px;
 
 .chat-messages {
 max-height: 300px;
+height: 100%;
+display: flex;
+flex-direction: column;
+
+}
+
+.chat-container {
+flex: 1;
+height: 100%;
+display: flex;
+flex-direction: column;
+max-height: 100;
 overflow-y: auto;
 }
 
@@ -273,6 +290,8 @@ border-radius: 5px;
 
 .user-message .message-content {
 background-color: #e0f7fa;
+/* 用户说的话在右边 */
+margin-left: auto;
 }
 
 .loading-indicator {
