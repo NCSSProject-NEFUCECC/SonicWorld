@@ -1,6 +1,8 @@
 import { createAlertDialog } from '@/components/message'
 import type {  Message } from '@/datasource/types'
-// 文本聊天服务
+import axios from 'axios'
+
+// 聊天服务函数 - 流式响应版本
 export const chat = async (messages : Message[], onChunk?: (chunk: string) => void): Promise<string> => {
   try {
     console.log("messages", messages)

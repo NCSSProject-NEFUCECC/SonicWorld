@@ -197,8 +197,8 @@ const captureAndSendFrame = () => {
       // 清空之前的导航响应
       navigationResponse.value = '正在分析环境...';
       
-      // 使用fetch API发送请求并处理流式响应 101.42.16.55:5000
-      fetch('/api/navigate', {
+      // 使用fetch API发送请求并处理流式响应
+      fetch('http://101.42.16.55:5000/api/navigate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -277,11 +277,10 @@ const captureAndSendFrame = () => {
   }
 }
 
-
 // 组件挂载时初始化相机和地理位置
 onMounted(() => {
   console.log('组件挂载，开始初始化')
-  // 初始化相机、地理位置和音频上下文
+  // 初始化相机和地理位置
   initCamera()
   initGeolocation()
 })
