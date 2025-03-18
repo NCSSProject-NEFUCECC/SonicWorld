@@ -2,7 +2,7 @@
   <div
     style="
       width: 90%;
-      height: 50%;
+      height: 90%;
       margin: auto;
       padding: 10px;
       border: 1px solid #ccc;
@@ -62,11 +62,10 @@
 
 <script setup lang="ts">
 import type { Message } from '@/datasource/types'
-import { chat } from '@/services/AIService'
-import { streamTextToSpeech } from '@/services/AudioService'
 import { ElMessage } from 'element-plus'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import '@/assets/XiaoZhiComponent.css' // 导入全局样式
 
 const router = useRouter()
 
@@ -80,6 +79,8 @@ const resetF=()=>{
   chatMessages.value=[];
   filled.value=false;
 }
+
+const gainNode = ref<GainNode | null>(null)
 
 // 视频和拍照相关
 const videoElement = ref<HTMLVideoElement | null>(null)
@@ -107,9 +108,13 @@ const initCamera = async () => {
       canvas.height = 480;
       // 假设原始比例是16:9，保持这个比例
       canvas.width = Math.round(480 * (16/9));
+      
+      console.log('相机初始化成功');
     }
   } catch (error) {
     console.error('相机访问失败:', error);
+    ElMessage.warning('无法访问相机，部分功能可能受限');
+    // 即使没有相机，也允许用户继续使用文本聊天功能
   }
 }
 
@@ -146,6 +151,9 @@ onUnmounted(() => {
   if (mediaStream) {
     mediaStream.getTracks().forEach((track) => track.stop());
   }
+  if (gainNode.value) {
+    gainNode.value.disconnect()
+  }
 })
 
 const sendMessage = async () => {
@@ -161,8 +169,9 @@ try {
   // 先捕获图像
   const imageData = await captureAndSendImage('默认意图');
   
-  // 使用fetch API发送请求并处理流式响应 101.42.16.55:5000
-  fetch('/api/chat', {
+  // 使用fetch API发送请求并处理流式响应
+  try {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -171,135 +180,116 @@ try {
         messages: chatMessages.value,
         image: imageData // 每次请求都发送图像数据
       })
-    }).then(async response => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('无法获取响应流');
-      }
-      const handleStream=async()=>{
-        let receivedText = '';
-        // 创建一个初始的空消息
-        const assistantMessageIndex = chatMessages.value.push({role:'assistant',content: ''}) - 1;
-          
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法获取响应流');
+    }
+      
+      
+      let receivedText = '';
+      // 创建一个初始的空消息
+      const assistantMessageIndex = chatMessages.value.push({role:'assistant',content: ''}) - 1;
+      
+      // 使用单一的流处理函数，同时处理文本和音频
+      const processStream = async () => {
+        try {
           while (true) {
             const { done, value } = await reader.read();
             
             if (done) {
-              console.log('流式响应接收完成');
+              console.log('流处理完成');
               break;
             }
             
-            // 将接收到的数据块转换为文本
-            const chunk = new TextDecoder().decode(value);
-            console.log('接收到数据块:', chunk);
+            // 尝试将数据解析为文本
+            const text = new TextDecoder().decode(value);
             
-            // 处理SSE格式的数据
-            const lines = chunk.split('\n\n');
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const content = line.substring(6);
-                if (content === '[完成]') {
-                  console.log('导航指引完成');
-                } else {
-                  // 累积接收到的文本
-                  receivedText += content;
-                  // 更新最后一条消息的内容，而不是添加新消息
-                  chatMessages.value[assistantMessageIndex].content = receivedText;
-                  
-                  // 将文本转换为语音并播放
-                  try {
-                    // 只对新增的内容进行语音合成
-                    streamTextToSpeech(content);
-                  } catch (error) {
-                    console.error('语音播放错误:', error);
+            // 检查是否为SSE格式的文本数据
+            if (text.includes('data:')) {
+              console.log('接收到文本数据:', text);
+              
+              // 处理SSE格式的数据
+              const lines = text.split('\n\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const content = line.substring(6);
+                  if (content === '[完成]') {
+                    console.log('导航指引完成');
+                  } else {
+                    // 累积接收到的文本
+                    receivedText += content;
+                    // 更新最后一条消息的内容，而不是添加新消息
+                    chatMessages.value[assistantMessageIndex].content = receivedText;
+                    if(receivedText==='领航模式'){
+                      // 导航到领航模式页面
+                      router.push({
+                        path: '/navigation',
+                      })
+                    }
                   }
                 }
               }
-            }
+            } 
           }
-          
-          if(receivedText==='领航模式'){
-          // alert(currentUserInput)
-          //跳转页面并传递用户最后一次输入
-            router.push({
-              path: '/navigation',
-            })
-          }
-
-          // 处理完所有数据后，更新最后一条消息的内容
-          chatMessages.value[assistantMessageIndex].content = receivedText;
-      }
+        } catch (error) {
+          console.error('流处理错误:', error);
+          ElMessage.error('接收响应时出错: ' + (error as Error).message);
+        } finally {
+          // 确保在流处理完成后关闭reader
+          reader.releaseLock();
+        }
+      };
       
-      // 调用处理流的函数
-      handleStream();
-           
-    })
-  if(chatMessages.value.length >= 2*limitNum) {
-    ElMessage.error('消息数量超过限制')
-    filled.value=true;
+      processStream();
+        
+      
+      // 注意：不需要在这里再次更新消息内容，因为已经在流处理过程中更新了
+      if(chatMessages.value.length >= 2*limitNum) {
+        ElMessage.warning('消息数量超过限制')
+        filled.value = true;
+      } 
+    }catch (error) {
+    console.error('请求失败:', error);
+    ElMessage.error('请求失败: ' + (error as Error).message);
+    // 移除失败的助手消息
+    if (chatMessages.value.length > 0 && chatMessages.value[chatMessages.value.length - 1].role === 'assistant') {
+      chatMessages.value.pop();
+    }
+  } finally {
+    loading.value = false;
   }
-} catch (error) {
-  ElMessage.error('请求失败: ' + (error as Error).message)
-} finally {
-  loading.value = false
+  } catch (error) {
+    console.error('请求失败:', error);
+    ElMessage.error('请求失败:'+ (error as Error).message);
+  }
 }
-}
+
+
+// 添加组件卸载时的清理逻辑
+onUnmounted(() => {
+
+  if (gainNode.value) {
+    gainNode.value.disconnect()
+    gainNode.value = null
+  }
+})
 </script>
 
-<style scoped >
-.greeting {
-display: flex;
-align-items: center;
+<style scoped>
+/* 使用全局样式，移除重复定义 */
+/* 仅保留特定于此组件的样式覆盖 */
+.chat-messages {
+  max-height: 300px; /* 覆盖全局样式中的高度 */
 }
 
 .xiaozhi-image {
-width: 30px;
-height: 30px;
-margin-right: 10px;
-}
-
-.chat-messages {
-max-height: 300px;
-overflow-y: auto;
-}
-
-.message-wrapper {
-display: flex;
-align-items: flex-start;
-margin-bottom: 10px;
-}
-
-.avatar {
-width: 25px;
-height: 25px;
-margin-right: 10px;
-}
-
-.message-content {
-background-color: #f0f0f0;
-padding: 8px;
-border-radius: 5px;
-}
-
-.user-message .message-content {
-background-color: #e0f7fa;
-}
-
-.loading-indicator {
-text-align: center;
-margin-top: 10px;
-}
-
-.chat-input {
-display: flex;
-
-}
-
-.el-input {
-flex: 1;
-margin-right: 10px;
+  width: 30px;
+  height: 30px;
 }
 </style>

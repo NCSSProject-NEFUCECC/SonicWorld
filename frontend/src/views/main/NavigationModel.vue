@@ -19,7 +19,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { streamTextToSpeech } from '@/services/AudioService'
 import axios from 'axios'
 import { chat } from '@/services/AIService'
 
@@ -247,7 +246,6 @@ const captureAndSendFrame = () => {
                   } else {
                     // 累积接收到的文本
                     receivedText += content;
-                    streamTextToSpeech(content);
                     navigationResponse.value = receivedText;
                   }
                 }

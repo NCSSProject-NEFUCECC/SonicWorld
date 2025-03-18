@@ -8,11 +8,10 @@ import time
 import dashscope
 from navigator import ana_msg
 from chater import convert_to_multimodal, intent_recognition
-from reader import synthesizer
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
-
 
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
 
@@ -60,27 +59,6 @@ def chat():
         print(f"错误: {str(e)}")
         return jsonify({"error": "服务器内部错误"}), 500
 
-
-@app.route('/api/tts', methods=['POST'])
-def text_to_speech():
-    try:
-        data = request.json
-        text = data.get('text', '')
-        if not text:
-            return jsonify({"error": "文本不能为空"}), 400
-        
-        # 调用reader.py中的函数进行文本到语音的转换
-        from reader import text_to_speech_stream
-        return text_to_speech_stream(text)
-    
-    except Exception as e:
-        print(f"文本转语音错误: {str(e)}")
-        return jsonify({"error": "文本转语音服务器内部错误"}), 500
-    
-    except Exception as e:
-        print(f"错误: {str(e)}")
-        return jsonify({"error": "服务器内部错误"}), 500
-
 # 新增导航API端点
 @app.route('/api/navigate', methods=['POST'])
 def navigate():
@@ -88,7 +66,10 @@ def navigate():
         data = request.json
         image_data = data.get('image', '')
         location = data.get('location', {})
-        user_message = user_messages_list[-1]
+        try:
+            user_message = user_messages_list[-1]
+        except:
+            user_message = "none"
         print("-"*10,user_message,"-"*10)
         if not image_data or not location:
             return jsonify({"error": "图像、位置信息或导航指令不能为空"}), 400
@@ -210,8 +191,6 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         if text_content:
                             print(f"{text_content}")
                             full_text += text_content
-                            # 使用语音合成器将文本转换为语音
-                            synthesizer.streaming_call(text_content)
                             # 发送文本内容到前端
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
@@ -254,7 +233,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         text_content = chunk.output.choices[0].message.content[0].get('text', '')
                         if text_content:
                             print(f"{text_content}")
-                            synthesizer.streaming_call(text_content)
+
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
@@ -297,9 +276,10 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         text_content = chunk.output.choices[0].message.content[0].get('text', '')
                         if text_content:
                             print(f"{text_content}")
-                            synthesizer.streaming_call(text_content)
+
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
+                            # 发送音频数据到前端
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
@@ -340,15 +320,16 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         text_content = chunk.output.choices[0].message.content[0].get('text', '')
                         if text_content:
                             print(f"{text_content}")
-                            synthesizer.streaming_call(text_content)
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
+                            # 发送音频数据到前端
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
                 print()
         
                 yield f"data: [完成]\n\n"
+                #synthesizer.streaming_complete()
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
             except Exception as e:
@@ -378,9 +359,6 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                         if text_content:
                             print(f"{text_content}")
                             full_text += text_content
-                            # 使用语音合成器将文本转换为语音
-                            synthesizer.streaming_call(text_content)
-                            # 发送文本内容到前端
                             yield f"data: {text_content}\n\n"
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")

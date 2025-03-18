@@ -1,11 +1,10 @@
 import time
-import pyaudio
+import sounddevice
 import dashscope
 from dashscope.api_entities.dashscope_response import SpeechSynthesisResponse
 from dashscope.audio.tts_v2 import *
-from chater import llm_basechat
-
 from datetime import datetime
+import numpy as np
 
 def get_timestamp():
     now = datetime.now()
@@ -18,17 +17,22 @@ dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
 model = "cosyvoice-v1"
 voice = "longxiaochun"
 
-
+llm_basechat = [
+            {"role": "system", "content": "你是一位情感陪伴专家，你的任务是陪伴一位盲人聊天，在聊天中，你需要关注用户的情感需要，不要反复提及用户残疾的情况。"},
+        ]
 class Callback(ResultCallback):
     _player = None
     _stream = None
 
     def on_open(self):
         print("websocket is open.")
-        self._player = pyaudio.PyAudio()
-        self._stream = self._player.open(
-            format=pyaudio.paInt16, channels=1, rate=22050, output=True
+        self._stream = sounddevice.OutputStream(
+            samplerate=22050,
+            channels=1,
+            dtype='int16',
+            blocksize=1024
         )
+        self._stream.start()
 
     def on_complete(self):
         print(get_timestamp() + " speech synthesis task complete successfully.")
@@ -48,7 +52,7 @@ class Callback(ResultCallback):
 
     def on_data(self, data: bytes) -> None:
         print(get_timestamp() + " audio result length: " + str(len(data)))
-        self._stream.write(data)
+        self._stream.write(np.frombuffer(data, dtype='int16'))
 
 
 callback = Callback()
@@ -84,7 +88,7 @@ for chunk in completion:
         print(f"处理流式输出块错误: {str(e)}")
         continue
 print()
-synthesizer.streaming_complete()
+synthesizer.streaming_complete()  # 完成合成后，一定要主动关闭连接
 
 print('[Metric] requestId: {}, first package delay ms: {}'.format(
     synthesizer.get_last_request_id(),

@@ -4,9 +4,11 @@ import json
 import os
 import base64
 import sys
-from reader import text_to_speech_stream  # 导入语音合成功能
-from reader import synthesizer
-
+from datetime import datetime
+from dashscope.api_entities.dashscope_response import SpeechSynthesisResponse
+from dashscope.audio.tts_v2 import *
+import sounddevice
+import numpy as np
 
 def get_location_info(address):
     """向高德地图API发送请求获取地理编码信息"""
@@ -200,8 +202,6 @@ def process_navigation_request(image_path, current_location, destination=None):
                         print(f"{text_content}", end="")
                         # 发送文本内容
                         yield f"data: {text_content}\n\n"
-                        # 同时发送语音标记，前端可以据此播放语音
-                        synthesizer.streaming_call(text_content)
                 except Exception as e:
                     print(f"处理流式输出块错误: {str(e)}")
                     continue
