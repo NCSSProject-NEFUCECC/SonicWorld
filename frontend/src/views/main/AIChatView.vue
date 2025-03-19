@@ -79,7 +79,8 @@ const resetF=()=>{
   chatMessages.value=[];
   filled.value=false;
 }
-
+const general_errora = new Audio('/src/assets/audio/general/general_error.mp3')
+const limit_wronga = new Audio('/src/assets/audio/chat/limit_wrong.mp3')
 // 视频和拍照相关
 const videoElement = ref<HTMLVideoElement | null>(null)
 let mediaStream: MediaStream | null = null
@@ -160,9 +161,9 @@ try {
   
   // 先捕获图像
   const imageData = await captureAndSendImage('默认意图');
-  alert("以"+user_token.value+"身份登录")
+  // alert("以"+user_token.value+"身份登录")
   // 使用fetch API发送请求并处理流式响应 http://101.42.16.55:5000
-  fetch('http://127.0.0.1:5000/api/chat', {
+  fetch('http://101.42.16.55:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -170,7 +171,7 @@ try {
       body: JSON.stringify({
         messages: chatMessages.value,
         image: imageData, // 每次请求都发送图像数据
-        token: user_token.value // 添加token参数
+        user_token: sessionStorage.getItem('user_token')
       })
     }).then(async response => {
       if (!response.ok) {
@@ -224,7 +225,6 @@ try {
     chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
   }
       }
-      
       // 调用处理流的函数
       handleStream();
            
@@ -236,6 +236,9 @@ try {
   }
 } catch (error) {
   ElMessage.error('请求失败: ' + (error as Error).message)
+// 播放错误提示音
+general_errora.play()
+  console.log(error)
 } finally {
   loading.value = false
 }

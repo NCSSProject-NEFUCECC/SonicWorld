@@ -39,7 +39,11 @@
             <div class="login-card" v-show="showLoginCard">
               <div class="login-header">
                 <el-avatar :size="40" :icon="UserFilled" class="login-avatar" />
-                <div class="login-title">账户登录</div>
+                <!--未登录显示登入，已经登入显示haveLogin-->
+                <div class="login-title">
+                  <span v-if="haveLogin==null">点此登录</span>
+                  <span v-else>{{haveLogin}}</span>
+                </div>
               </div>
               <div class="login-menu">
                 <div class="menu-item">
@@ -51,7 +55,9 @@
                 <div class="menu-item">
                   <span>辅助设置</span>
                 </div>
-                
+                <div class="menu-item" @click="handleLogout">
+                  <span>退出登录</span>
+                </div> 
               </div>
             </div>
           </div>
@@ -60,6 +66,7 @@
   
       <!-- 登录模态框 -->
       <el-dialog
+        v-if="haveLogin==null"
         v-model="loginDialogVisible"
         title="用户登录"
         width="400px"
@@ -70,6 +77,7 @@
           :rules="loginRules"
           label-width="80px"
           status-icon>
+         
           <el-form-item label="用户名" prop="username">
             <el-input v-model="loginForm.username" placeholder="请输入用户名" :prefix-icon="User" />
           </el-form-item>
@@ -105,17 +113,17 @@
   import type { FormInstance, FormRules } from 'element-plus'
   import { reactive, ref, provide } from 'vue'
 import axios from 'axios'
+import {CommonService} from '@/services/CommonService.ts'
 import { ElMessage } from 'element-plus'
-  
+  const haveLogin=ref<string|null>(null);
+  haveLogin.value=sessionStorage.getItem('user_token')
   const isCollapse = ref(true)
   const isLoggedIn = ref(false)
   const menus = ref([
     { name: '开始对话', path: '/ai/chat' },
-    { name: '领航模式', path: '/navigation' },
-    { name: '政策跟踪', path: '/websitetrack' },
     {
-      name: '政策分析',
-      path: '/policyanalysis'
+      name: '领航模式',
+      path: '/navigation'
     },
     { name: '个人账号', path: '/profile' },
     { name: '我的关注', path: '/favorites' },
@@ -125,15 +133,18 @@ import { ElMessage } from 'element-plus'
   
   const handleOpen = (key: string, keyPath: string[]) => {
     console.log('key', key, 'keyPath', keyPath)
-  
+    console.log('user_token',sessionStorage.getItem('user_token'))
+    if(key!=='1' && sessionStorage.getItem('user_token')==null){
+      ElMessage.error('请先登录')
+      router.push(menus.value[0].path)
+      return
+    }
     router.push(menus.value[parseInt(key) - 1].path)
   }
   
   const loginDialogVisible = ref(false)
   const loading = ref(false)
   const loginFormRef = ref<FormInstance>()
-  const username = ref('')
-  const user_token = ref('')
   
   const loginForm = reactive({
     username: '',
@@ -154,7 +165,38 @@ import { ElMessage } from 'element-plus'
   const handleLoginClick = () => {
     loginDialogVisible.value = true
   }
+  const handleLogout = () => {
+    sessionStorage.removeItem('user_token')
+    haveLogin.value=null;
+    ElMessage.success('已退出登录')
+  }
+  const wrong_usrpsda = new Audio('/src/assets/audio/login/wrong_usrpsd.mp3')
+  wrong_usrpsda.addEventListener('loadeddata', () => {
+    console.log('音频资源 wrong_usrpsd.mp3 加载成功')
+  })
+  wrong_usrpsda.addEventListener('error', (e) => {
+    console.error('音频资源 wrong_usrpsd.mp3 加载失败:', e)
+    ElMessage.error('音频资源加载失败')
+  })
   
+  const wrong_servera = new Audio('/src/assets/audio/login/wrong_server.mp3')
+  wrong_servera.addEventListener('loadeddata', () => {
+    console.log('音频资源 wrong_server.mp3 加载成功')
+  })
+  wrong_servera.addEventListener('error', (e) => {
+    console.error('音频资源 wrong_server.mp3 加载失败:', e)
+    ElMessage.error('音频资源加载失败')
+  })
+  
+  const other_wronga = new Audio('/src/assets/audio/login/other_wrong.mp3')
+  other_wronga.addEventListener('loadeddata', () => {
+    console.log('音频资源 other_wrong.mp3 加载成功')
+  })
+  other_wronga.addEventListener('error', (e) => {
+    console.error('音频资源 other_wrong.mp3 加载失败:', e)
+    ElMessage.error('音频资源加载失败')
+  })
+
   const handleSubmit = async () => {
     if (!loginFormRef.value) return
   
@@ -162,29 +204,25 @@ import { ElMessage } from 'element-plus'
       loading.value = true
       await loginFormRef.value.validate()
       
-      const response = await axios.post('http://127.0.0.1:5000/api/login', {
-        username: loginForm.username,
-        password: loginForm.password
-      })
+      const response = await CommonService.loginService(loginForm.username,loginForm.password)
   
       if (response.data.status === 'success') {
-        username.value = response.data.data.username
-        user_token.value = response.data.data.username
-        // 使用provide向子组件提供user_token变量，子组件可以通过inject注入使用
-        provide('user_token', user_token)
-        console.log('登录成功,token为:', user_token.value)
         ElMessage.success(response.data.message)
         isLoggedIn.value = true
         loginDialogVisible.value = false
+        haveLogin.value=sessionStorage.getItem('user_token')
       } else {
         ElMessage.error(response.data.message || '登录失败')
+        wrong_servera.play()
       }
     } catch (error: any) {
       console.error('登录失败:', error)
       if (error.response?.status === 401) {
         ElMessage.error('用户名或密码错误')
+        wrong_usrpsda.play()
       } else {
         ElMessage.error(error.response?.data?.message || '登录失败，请稍后重试')
+        other_wronga.play()
       }
     } finally {
       loading.value = false

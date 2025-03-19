@@ -23,7 +23,7 @@ with app.app_context():
 
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
 
-user_messages_list = {}
+user_messages_dic = {}
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -38,9 +38,9 @@ def chat():
         user_message = user_messages[-1].get('content', '')
         try:
             user_token = data.get('user_token', '')
-            print("这条消息来自用户",user_token)
+            print("这条消息来自用户",user_token,"type=",type(user_token))
         except:
-            user_token = ""
+            user_token = "None"
         image_data = data.get('image', '')
         # print(len(user_message),user_message)
         if not user_message:
@@ -79,8 +79,9 @@ def navigate():
         data = request.json
         image_data = data.get('image', '')
         location = data.get('location', {})
+        data.get('user_token', '')
         try:
-            user_message = user_messages_list[-1]
+            user_message = user_messages_dic.get(user_token, 'none')
         except:
             user_message = "none"
         print("-"*10,user_message,"-"*10)
@@ -389,10 +390,11 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                     yield f"data: 抱歉，无法处理法律咨询请求。\n\n"
         elif intent == "领航任务":
             try:
-                if user_token !="": 
+                print(user_token == None, user_token == "", user_token == "None","UserToken:",user_token)   
+                if user_token !="" and user_token != None and user_token!="None": 
                     this_message = history_msg[-1]['content']
-                    # 字典中添加{token: user_message}
-                    user_messages_list.append({user_token: this_message})
+                    # 将用户消息存储在字典中，使用token作为键
+                    user_messages_dic[user_token] = this_message
                     yield f"data: 领航模式\n\n"
                 else:
                     yield f"data: 未登录，无法使用领航模式\n\n"

@@ -59,3 +59,7 @@ frontend/android/app/src/main/res/xml/file_paths.xml
 frontend/android/app/src/test/java/com/getcapacitor/myapp/ExampleUnitTest.java
 frontend/android/gradle/wrapper/gradle-wrapper.jar
 frontend/android/gradle/wrapper/gradle-wrapper.properties
+backend/img/rec.png
+frontend/android/app/release/output-metadata.json
+frontend/android/app/release/baselineProfiles/0/app-release.dm
+frontend/android/app/release/baselineProfiles/1/app-release.dm

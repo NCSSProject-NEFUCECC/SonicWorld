@@ -125,7 +125,8 @@ const initCamera = async () => {
     }
   } catch (error: unknown) {
     console.error('相机访问失败:', error);
-    
+    const media_wronga = new Audio('/src/assets/audio/navigator/media_wrong.mp3')
+    media_wronga.play()
     // 根据错误类型提供具体的错误信息
     const mediaError = error as MediaError;
     if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
@@ -197,7 +198,7 @@ const captureAndSendFrame = () => {
       // 清空之前的导航响应
       navigationResponse.value = '正在分析环境...';
       
-      // 使用fetch API发送请求并处理流式响应
+      // 使用fetch API发送请求并处理流式响应 http://101.42.16.55:5000
       fetch('http://101.42.16.55:5000/api/navigate', {
         method: 'POST',
         headers: {
@@ -205,7 +206,8 @@ const captureAndSendFrame = () => {
         },
         body: JSON.stringify({
           image: imageData,
-          location: locationInfo.value
+          location: locationInfo.value,
+          user_token: sessionStorage.getItem('user_token')
         })
       })
       .then(response => {
