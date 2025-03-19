@@ -38,7 +38,7 @@ def chat():
         user_message = user_messages[-1].get('content', '')
         try:
             user_token = data.get('user_token', '')
-            print("这条消息来自用户",user_token,"type=",type(user_token))
+            print("这条消息来自用户",user_token,"type=")
         except:
             user_token = "None"
         image_data = data.get('image', '')
@@ -79,12 +79,13 @@ def navigate():
         data = request.json
         image_data = data.get('image', '')
         location = data.get('location', {})
-        data.get('user_token', '')
+        user_token = data.get('user_token', '')
+        print("当前用户：",user_token)
         try:
             user_message = user_messages_dic.get(user_token, 'none')
         except:
             user_message = "none"
-        print("-"*10,user_message,"-"*10)
+        # print("-"*10,user_message,"-"*10)
         if not image_data or not location:
             return jsonify({"error": "图像、位置信息或导航指令不能为空"}), 400
         
@@ -390,11 +391,12 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                     yield f"data: 抱歉，无法处理法律咨询请求。\n\n"
         elif intent == "领航任务":
             try:
-                print(user_token == None, user_token == "", user_token == "None","UserToken:",user_token)   
+                # print(user_token == None, user_token == "", user_token == "None","UserToken:",user_token)   
                 if user_token !="" and user_token != None and user_token!="None": 
                     this_message = history_msg[-1]['content']
                     # 将用户消息存储在字典中，使用token作为键
                     user_messages_dic[user_token] = this_message
+                    # print("当前字典：",user_messages_dic)
                     yield f"data: 领航模式\n\n"
                 else:
                     yield f"data: 未登录，无法使用领航模式\n\n"

@@ -1,10 +1,16 @@
 <template>
-  <div class="camera-container">
-    <video ref="videoElement" autoplay playsinline @loadedmetadata="handleVideoLoaded"></video>
-    <div v-if="locationInfo" class="location-info">
-      <p>经度: {{ locationInfo.longitude }}</p>
-      <p>纬度: {{ locationInfo.latitude }}</p>
+  <div class="navigation-layout">
+    <div class="camera-container">
+      <video ref="videoElement" autoplay playsinline @loadedmetadata="handleVideoLoaded"></video>
+      <div v-if="locationInfo" class="location-info">
+        <p>经度: {{ locationInfo.longitude }}</p>
+        <p>纬度: {{ locationInfo.latitude }}</p>
+      </div>
     </div>
+    <div class="map-container">
+      <img :src="mapUrl">
+    </div>
+    <!-- https://restapi.amap.com/v3/staticmap?location=126.63396014359466,45.72398605359935&zoom=16&size=750*300&markers=mid,,A:126.63396014359466,45.72398605359935&key=720655fed978632fd548b69f8808bc72 -->
     <div v-if="navigationResponse" class="navigation-response">
       <p>{{ navigationResponse }}</p>
     </div>
@@ -18,10 +24,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted,computed } from 'vue'
 import axios from 'axios'
 import { chat } from '@/services/AIService'
-
+const mapUrl = computed<string>(() => {
+  if (!locationInfo.value) return ''
+  return `https://restapi.amap.com/v3/staticmap?location=${locationInfo.value.longitude},${locationInfo.value.latitude}&zoom=16&size=750*300&markers=mid,,A:${locationInfo.value.longitude},${locationInfo.value.latitude}&key=720655fed978632fd548b69f8808bc72`
+})
 // 定义类型接口
 interface LocationInfo {
   latitude: number;
@@ -302,14 +311,26 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.camera-container {
-  width: 100%;
-  height: 60vh;
+.navigation-layout {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: hidden;
-  position: relative;
+  flex-direction: column;
+  height: calc(100vh - 20px);
+}
+
+.camera-container {
+  flex: 3;
+  height: 60%;
+}
+
+.map-container {
+  flex: 2;
+  height: 40%;
+  margin-top: 10px;
+}
+
+.map-placeholder {
+  color: #666;
+  font-size: 14px;
 }
 
 video {

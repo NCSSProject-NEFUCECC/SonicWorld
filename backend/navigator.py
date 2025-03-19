@@ -10,24 +10,6 @@ from dashscope.audio.tts_v2 import *
 import sounddevice
 import numpy as np
 
-def get_location_info(address):
-    """向高德地图API发送请求获取地理编码信息"""
-    base_url = "https://restapi.amap.com/v3/geocode/geo"
-    params = {
-        "key": "720655fed978632fd548b69f8808bc72",
-        "address": address,
-        "output": "JSON"
-    }
-    
-    try:
-        response = requests.get(base_url, params=params)
-        response.raise_for_status()  # 检查请求是否成功
-        # print("get_location_info的返回值是：",response.json(),type(response.json()))
-        
-        return response.json()
-    except requests.RequestException as e:
-        print(f"请求失败: {e}")
-        return None
 
 def parse_location_result(result):
     """解析高德地图API返回的结果"""
@@ -105,6 +87,7 @@ def gpslal2gaodelal(location):  #将gps的经纬度转换为高德的经纬度
     if response.status_code == 200 and response.json().get("status") == "1":
         res = response.json()
         return res["locations"].split(",")
+        # return location
     else:
         return None
     
