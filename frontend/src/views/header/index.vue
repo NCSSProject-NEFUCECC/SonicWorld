@@ -103,7 +103,9 @@
     UserFilled
   } from '@element-plus/icons-vue'
   import type { FormInstance, FormRules } from 'element-plus'
-  import { reactive, ref } from 'vue'
+  import { reactive, ref, provide } from 'vue'
+import axios from 'axios'
+import { ElMessage } from 'element-plus'
   
   const isCollapse = ref(true)
   const isLoggedIn = ref(false)
@@ -130,6 +132,8 @@
   const loginDialogVisible = ref(false)
   const loading = ref(false)
   const loginFormRef = ref<FormInstance>()
+  const username = ref('')
+  const user_token = ref('')
   
   const loginForm = reactive({
     username: '',
@@ -157,11 +161,31 @@
     try {
       loading.value = true
       await loginFormRef.value.validate()
-      // TODO: 添加登录API调用
-      console.log('登录表单提交:', loginForm)
-      loginDialogVisible.value = false
-    } catch (error) {
-      console.error('表单验证失败', error)
+      
+      const response = await axios.post('http://127.0.0.1:5000/api/login', {
+        username: loginForm.username,
+        password: loginForm.password
+      })
+  
+      if (response.data.status === 'success') {
+        username.value = response.data.data.username
+        user_token.value = response.data.data.username
+        // 使用provide向子组件提供user_token变量，子组件可以通过inject注入使用
+        provide('user_token', user_token)
+        console.log('登录成功,token为:', user_token.value)
+        ElMessage.success(response.data.message)
+        isLoggedIn.value = true
+        loginDialogVisible.value = false
+      } else {
+        ElMessage.error(response.data.message || '登录失败')
+      }
+    } catch (error: any) {
+      console.error('登录失败:', error)
+      if (error.response?.status === 401) {
+        ElMessage.error('用户名或密码错误')
+      } else {
+        ElMessage.error(error.response?.data?.message || '登录失败，请稍后重试')
+      }
     } finally {
       loading.value = false
     }

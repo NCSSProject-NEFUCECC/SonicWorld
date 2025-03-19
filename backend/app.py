@@ -8,14 +8,22 @@ import time
 import dashscope
 from navigator import ana_msg
 from chater import convert_to_multimodal, intent_recognition
+import chater
 from datetime import datetime
+from database import db, User
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 CORS(app)
+db.init_app(app)
+
+with app.app_context():
+    db.create_all()
 
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
 
-user_messages_list = []
+user_messages_list = {}
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -28,6 +36,11 @@ def chat():
         data = request.json
         user_messages = data.get('messages', '')
         user_message = user_messages[-1].get('content', '')
+        try:
+            user_token = data.get('user_token', '')
+            print("这条消息来自用户",user_token)
+        except:
+            user_token = ""
         image_data = data.get('image', '')
         # print(len(user_message),user_message)
         if not user_message:
@@ -46,7 +59,7 @@ def chat():
             # 如果有图像数据，保存图像
             image_path = save_image(image_data)
         
-        generator = call_llm_api(intent, user_messages, image_path)
+        generator = call_llm_api(intent, user_messages, image_path, user_token)
         
         # 返回流式响应
         return Response(stream_with_context(generator), 
@@ -126,7 +139,7 @@ def process_navigation(image_path, location, destination=None):
         return jsonify({"error": "导航处理失败，请稍后再试"}), 500
 
 
-def call_llm_api(llm_lr_response, history_msg, image_path=None):
+def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
     # 如果没有提供图像路径，使用默认图像
     if not image_path:
         image_path = r"img/default.png"
@@ -162,7 +175,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
             ]
     llm_navigator = [
                 {"role": "system", "content": "你的用户是一位盲人，他现在正在进行导航任务。你需要帮助他找到目的地，并提供导航建议。并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
-            ]                
+            ]     
                     
     try:
         # 设置请求超时时间
@@ -376,8 +389,13 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
                     yield f"data: 抱歉，无法处理法律咨询请求。\n\n"
         elif intent == "领航任务":
             try:
-                user_messages_list.append(history_msg[-1]['content'])
-                yield f"data: 领航模式\n\n"
+                if user_token !="": 
+                    this_message = history_msg[-1]['content']
+                    # 字典中添加{token: user_message}
+                    user_messages_list.append({user_token: this_message})
+                    yield f"data: 领航模式\n\n"
+                else:
+                    yield f"data: 未登录，无法使用领航模式\n\n"
             except Exception as e:
                 print(f"领航任务API调用错误: {str(e)}")
                 if "Connection" in str(e):
@@ -394,6 +412,55 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None):
             return "抱歉，服务连接出现问题，请稍后再试。"
         return "抱歉，系统处理出现未知错误。"
 
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    print("登录请求，用户名：", username, "密码：", password)
+    
+    user = User.query.filter_by(username=username).first()
+    
+    if user is None:
+        # 用户不存在，创建新用户
+        try:
+            print("用户不存在，尝试创建用户，用户名：", username)
+            user = User(username=username)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            print("用户创建成功")
+            return jsonify({
+                "status": "success",
+                "message": "注册并登录成功",
+                "data": {"username": username}
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            print(f"用户创建失败: {str(e)}")
+            return jsonify({
+                "status": "error",
+                "message": "创建用户失败",
+                "error": str(e)
+            }), 500
+    
+    # 用户存在，验证密码
+    print("用户存在，验证密码")
+    if not user.check_password(password):
+        print("密码错误")
+        return jsonify({
+            "status": "error",
+            "message": "密码错误",
+            "error": "密码验证失败"
+        }), 401
+    
+    print("密码正确,返回登录成功")
+    return jsonify({
+        "status": "success",
+        "message": "登录成功",
+        "data": {"username": username}
+    }), 200
+    
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True, port=5000)

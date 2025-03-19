@@ -64,7 +64,7 @@
 import type { Message } from '@/datasource/types'
 import { chat } from '@/services/AIService'
 import { ElMessage } from 'element-plus'
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick, inject } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -73,8 +73,8 @@ const chatContainer = ref<HTMLElement | null>(null)
 const chatMessages = ref<Message[]>([])
 const userInput = ref('')
 const loading = ref(false)
-const filled=ref(false);
-const limitNum=20;
+const filled=ref(false)
+const limitNum=20
 const resetF=()=>{
   chatMessages.value=[];
   filled.value=false;
@@ -150,6 +150,7 @@ onUnmounted(() => {
 const sendMessage = async () => {
 if (!userInput.value.trim()) return
 const currentUserInput = userInput.value // 保存当前用户输入
+const user_token = inject('user_token', ref(''))
 chatMessages.value.push({role:'user',content: currentUserInput})
 try {
   loading.value = true
@@ -159,16 +160,17 @@ try {
   
   // 先捕获图像
   const imageData = await captureAndSendImage('默认意图');
-  
-  // 使用fetch API发送请求并处理流式响应
-  fetch('http://101.42.16.55:5000/api/chat', {
+  alert("以"+user_token.value+"身份登录")
+  // 使用fetch API发送请求并处理流式响应 http://101.42.16.55:5000
+  fetch('http://127.0.0.1:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         messages: chatMessages.value,
-        image: imageData // 每次请求都发送图像数据
+        image: imageData, // 每次请求都发送图像数据
+        token: user_token.value // 添加token参数
       })
     }).then(async response => {
       if (!response.ok) {
@@ -308,4 +310,4 @@ display: flex;
 flex: 1;
 margin-right: 10px;
 }
-</style>    
+</style>

@@ -45,4 +45,4 @@ def intent_recognition(message):
     except Exception as e:
         print(f"错误: {str(e)}")
         # 如果意图识别失败，默认返回普通聊天意图
-        return jsonify({"intent":"普通聊天","msg":message})
+        return jsonify({"intent":"普通聊天","msg":message})  
