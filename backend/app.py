@@ -79,6 +79,11 @@ def navigate():
         data = request.json
         image_data = data.get('image', '')
         location = data.get('location', {})
+        try:
+            heading = data.get('heading', 0)
+        except:
+            heading = None
+        # print("获取到朝向",heading)
         user_token = data.get('user_token', '')
         print("当前用户：",user_token)
         try:
@@ -93,7 +98,7 @@ def navigate():
         image_path = save_image(image_data)
         destination = ana_msg(user_message)
         # 调用导航函数处理图像和位置信息，返回流式响应
-        return process_navigation(image_path, location,destination)
+        return process_navigation(image_path, location,destination,heading)
     
     except Exception as e:
         print(f"导航错误: {str(e)}")
@@ -120,14 +125,14 @@ def save_image(image_data):
     return image_path
 
 # 处理导航请求
-def process_navigation(image_path, location, destination=None):
+def process_navigation(image_path, location, destination=None, heading=None):
     try:
         # 调用navigator模块处理导航请求
         from navigator import process_navigation_request
         from flask import Response, stream_with_context
         
         # 获取生成器函数
-        generator = process_navigation_request(image_path, location, destination)
+        generator = process_navigation_request(image_path, location, destination, heading)
         
         # 返回流式响应
         return Response(stream_with_context(generator()), 

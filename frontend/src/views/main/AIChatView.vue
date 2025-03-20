@@ -168,7 +168,7 @@ try {
   // 先捕获图像
   const imageData = await captureAndSendImage('默认意图');
   // alert("以"+user_token.value+"身份登录")
-  // 使用fetch API发送请求并处理流式响应 http://101.42.16.55:5000
+  // 使用fetch API发送请求并处理流式响应
   fetch('http://101.42.16.55:5000/api/chat', {
       method: 'POST',
       headers: {

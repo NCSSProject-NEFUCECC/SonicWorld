@@ -3,8 +3,7 @@
     <div class="camera-container">
       <video ref="videoElement" autoplay playsinline @loadedmetadata="handleVideoLoaded"></video>
       <div v-if="locationInfo" class="location-info">
-        <p>经度: {{ locationInfo.longitude }}</p>
-        <p>纬度: {{ locationInfo.latitude }}</p>
+        <p v-if="compassHeading !== null">朝向: {{ compassHeading.toFixed(0) }}°</p>
       </div>
     </div>
     <div v-if="navigationResponse" class="navigation-response">
@@ -20,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted,computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 import { chat } from '@/services/AIService'
 // 导入音频文件
@@ -36,6 +35,10 @@ interface MediaError {
   name: string;
   message?: string;
 }
+
+// 添加指南针相关变量
+const compassHeading = ref<number | null>(null)
+const hasDeviceOrientation = ref(false)
 
 const videoElement = ref<HTMLVideoElement | null>(null)
 let mediaStream: MediaStream | null = null
@@ -202,7 +205,7 @@ const captureAndSendFrame = () => {
       // 清空之前的导航响应
       navigationResponse.value = '正在分析环境...';
       
-      // 使用fetch API发送请求并处理流式响应 http://101.42.16.55:5000
+      // 使用fetch API发送请求并处理流式响应
       fetch('http://101.42.16.55:5000/api/navigate', {
         method: 'POST',
         headers: {
@@ -211,6 +214,7 @@ const captureAndSendFrame = () => {
         body: JSON.stringify({
           image: imageData,
           location: locationInfo.value,
+          heading: compassHeading.value, // 添加指南针朝向数据
           user_token: sessionStorage.getItem('user_token')
         })
       })
@@ -289,6 +293,48 @@ onMounted(() => {
   // 初始化相机和地理位置
   initCamera()
   initGeolocation()
+  // 初始化指南针
+  // 检查设备是否支持方向事件
+  if (window.DeviceOrientationEvent) {
+    hasDeviceOrientation.value = true
+    console.log('设备支持方向事件，初始化指南针')
+    
+    // 处理设备方向变化事件
+    const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
+      // iOS 设备需要特殊处理
+      if (typeof (event as any).webkitCompassHeading !== 'undefined') {
+        // iOS 设备直接提供指南针朝向
+        compassHeading.value = (event as any).webkitCompassHeading
+      } else if (event.alpha !== null) {
+        // 安卓设备需要通过 alpha 值计算
+        compassHeading.value = 360 - event.alpha
+      }
+    }
+    
+    // 检查是否需要请求权限（iOS 13+ 需要）
+    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      // iOS 13+ 设备需要请求权限
+      document.addEventListener('click', async () => {
+        try {
+          const permission = await (DeviceOrientationEvent as any).requestPermission()
+          if (permission === 'granted') {
+            window.addEventListener('deviceorientation', handleDeviceOrientation, false)
+            console.log('iOS 设备方向权限已获取')
+          } else {
+            console.error('iOS 设备方向权限被拒绝')
+          }
+        } catch (error) {
+          console.error('请求设备方向权限失败:', error)
+        }
+      }, { once: true })
+    } else {
+      // 其他设备直接添加监听
+      window.addEventListener('deviceorientation', handleDeviceOrientation, false)
+      console.log('设备方向事件监听已添加')
+    }
+  } else {
+    console.log('设备不支持方向事件，无法获取指南针数据')
+  }
 })
 
 // 组件卸载时清理资源
@@ -301,6 +347,11 @@ onUnmounted(() => {
   // 清理地理位置监听
   if (locationWatchId !== null) {
     navigator.geolocation.clearWatch(locationWatchId)
+  }
+  
+  // 清理设备方向事件监听
+  if (hasDeviceOrientation.value) {
+    window.removeEventListener('deviceorientation', () => {}, false)
   }
 })
 </script>

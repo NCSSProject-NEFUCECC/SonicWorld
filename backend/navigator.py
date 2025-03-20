@@ -89,7 +89,7 @@ def ana_msg(message):
         return None
     lal = get_location_info(address)
     lal = parse_location_result(lal)
-    print(address,"的经纬度为",lal["location"])
+    # print(address,"的经纬度为",lal["location"])
     # 将经纬度字符串转换为浮点数元组
     lng, lat = lal["location"].split(",")
     return (float(lng), float(lat))
@@ -111,7 +111,7 @@ def gpslal2gaodelal(location):  #将gps的经纬度转换为高德的经纬度
         return None
     
 # 新增处理导航请求的函数
-def process_navigation_request(image_path, current_location, destination=None):
+def process_navigation_request(image_path, current_location, destination=None, heading=None):
     """处理前端发送的导航请求，以流式方式返回结果
     
     Args:
@@ -135,7 +135,7 @@ def process_navigation_request(image_path, current_location, destination=None):
             if gaode_coords:
                 current_longitude, current_latitude = gaode_coords
             
-            print(f"当前位置: 经度 {current_longitude}, 纬度 {current_latitude}")
+            # print(f"当前位置: 经度 {current_longitude}, 纬度 {current_latitude}")
             yield f"data: 当前位置: 经度 {current_longitude}, 纬度 {current_latitude}\n\n"
             
             # 路线信息
@@ -152,21 +152,21 @@ def process_navigation_request(image_path, current_location, destination=None):
                     # 获取路线指引
                     try:
                         route_info = get_route_info((current_longitude, current_latitude), (dest_lng, dest_lat))
-                        print("获取到导航信息",route_info)
+                        # print("获取到导航信息",route_info)
                     except Exception as e:
                         route_info = f"获取路线信息失败: {str(e)}"
                     # yield f"data: 获取到路线信息: {route_info}\n\n"
-            
+                print("接收到用户朝向信息",heading)
                 messages = [
                     {
                         "role": "system",
-                        "content": "你是一个导航助手，需要分析用户当前所处的环境图像，并提供导航建议。请分析图像中看到的环境，根据导航建议和路况，并给出适合盲人的导航指示。你的回应应当简洁、理性、高信息密度。不要擅自预测不在图片中的内容。你的输出应当是这样的：当前环境中有。。。/你正处在。。。，导航信息显示。。。，建议。。。"
+                        "content": "你是一个导航助手，需要分析用户当前所处的环境图像，并提供导航建议。请分析图像中看到的环境，根据导航建议和路况，并给出适合盲人的导航指示。你的回应应当简洁、理性、高信息密度。不要擅自预测不在图片中的内容。你需要根据用户的朝向和得到的导航信息的方向建议用户的行动，例如导航信息表示应该朝北走，用户的朝向显示为270度，你就应该告诉用户应该先右转；如果导航表示应该朝北走，用户朝向显示为20度，说明用户的朝向大致是正确的，你就应当根据图片上显示的道路分析建议用户靠哪个方向走。如果接受到的朝向为None，就忽略朝向信息。你的输出应当是这样的：当前环境中有。。。/你正处在。。。，根据导航建议。。。"
                     },
                     {
                         "role": "user",
                         "content": [
                             {"image": image_path},
-                            {"text": f"导航建议：{route_info}"}
+                            {"text": f"导航建议：{route_info},用户朝向{heading}"}
                         ]
                     }
                 ]
