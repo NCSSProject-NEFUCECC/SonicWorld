@@ -79,8 +79,14 @@ const resetF=()=>{
   chatMessages.value=[];
   filled.value=false;
 }
-const general_errora = new Audio('/src/assets/audio/general/general_error.mp3')
-const limit_wronga = new Audio('/src/assets/audio/chat/limit_wrong.mp3')
+
+// 导入音频文件
+import generalErrorAudio from '@/assets/audio/general/general_error.mp3'
+import limitWrongAudio from '@/assets/audio/chat/limit_wrong.mp3'
+
+const general_errora = new Audio(generalErrorAudio)
+const limit_wronga = new Audio(limitWrongAudio)
+
 // 视频和拍照相关
 const videoElement = ref<HTMLVideoElement | null>(null)
 let mediaStream: MediaStream | null = null
