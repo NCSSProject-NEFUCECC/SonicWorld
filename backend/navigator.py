@@ -25,6 +25,25 @@ def parse_location_result(result):
             }
     return None
 
+def get_location_info(address):
+     """向高德地图API发送请求获取地理编码信息"""
+     base_url = "https://restapi.amap.com/v3/geocode/geo"
+     params = {
+         "key": "720655fed978632fd548b69f8808bc72",
+         "address": address,
+         "output": "JSON"
+     }
+ 
+     try:
+         response = requests.get(base_url, params=params)
+         response.raise_for_status()  # 检查请求是否成功
+         # print("get_location_info的返回值是：",response.json(),type(response.json()))
+ 
+         return response.json()
+     except requests.RequestException as e:
+         print(f"请求失败: {e}")
+         return None
+
 def get_route_info(start, end):
     print("get_route_info的参数是：",start[0],start[1],end[0],end[1])
     # https://restapi.amap.com/v5/direction/walking?isindoor=0&origin={start[0]},{start[1]}&destination={end[0]},{end[1]}&key=<用户的key>
@@ -112,12 +131,12 @@ def process_navigation_request(image_path, current_location, destination=None):
             current_longitude = current_location.get('longitude')
             
             # 转换当前位置坐标为高德坐标系
-            gaode_coords = gpslal2gaodelal((current_latitude, current_longitude))
+            gaode_coords = gpslal2gaodelal((current_longitude, current_latitude))
             if gaode_coords:
-                current_latitude, current_longitude = gaode_coords
+                current_longitude, current_latitude = gaode_coords
             
-            print(f"当前位置: 纬度 {current_latitude}, 经度 {current_longitude}")
-            yield f"data: 当前位置: 纬度 {current_latitude}, 经度 {current_longitude}\n\n"
+            print(f"当前位置: 经度 {current_longitude}, 纬度 {current_latitude}")
+            yield f"data: 当前位置: 经度 {current_longitude}, 纬度 {current_latitude}\n\n"
             
             # 路线信息
             route_guidance = ""

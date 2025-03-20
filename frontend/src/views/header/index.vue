@@ -112,9 +112,12 @@
   } from '@element-plus/icons-vue'
   import type { FormInstance, FormRules } from 'element-plus'
   import { reactive, ref, provide } from 'vue'
-import axios from 'axios'
-import {CommonService} from '@/services/CommonService.ts'
-import { ElMessage } from 'element-plus'
+  import axios from 'axios'
+  import {CommonService} from '@/services/CommonService.ts'
+  import { ElMessage } from 'element-plus'
+  import wrongUsrpsdAudio from '@/assets/audio/login/wrong_usrpsd.mp3'
+  import wrongServerAudio from '@/assets/audio/login/wrong_server.mp3'
+  import otherWrongAudio from '@/assets/audio/login/other_wrong.mp3'
   const haveLogin=ref<string|null>(null);
   haveLogin.value=sessionStorage.getItem('user_token')
   const isCollapse = ref(true)
@@ -170,7 +173,8 @@ import { ElMessage } from 'element-plus'
     haveLogin.value=null;
     ElMessage.success('已退出登录')
   }
-  const wrong_usrpsda = new Audio('/src/assets/audio/login/wrong_usrpsd.mp3')
+
+  const wrong_usrpsda = new Audio(wrongUsrpsdAudio)
   wrong_usrpsda.addEventListener('loadeddata', () => {
     console.log('音频资源 wrong_usrpsd.mp3 加载成功')
   })
@@ -179,7 +183,7 @@ import { ElMessage } from 'element-plus'
     ElMessage.error('音频资源加载失败')
   })
   
-  const wrong_servera = new Audio('/src/assets/audio/login/wrong_server.mp3')
+  const wrong_servera = new Audio(wrongServerAudio)
   wrong_servera.addEventListener('loadeddata', () => {
     console.log('音频资源 wrong_server.mp3 加载成功')
   })
@@ -188,7 +192,7 @@ import { ElMessage } from 'element-plus'
     ElMessage.error('音频资源加载失败')
   })
   
-  const other_wronga = new Audio('/src/assets/audio/login/other_wrong.mp3')
+  const other_wronga = new Audio(otherWrongAudio)
   other_wronga.addEventListener('loadeddata', () => {
     console.log('音频资源 other_wrong.mp3 加载成功')
   })

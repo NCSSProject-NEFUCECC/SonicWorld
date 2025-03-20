@@ -7,10 +7,6 @@
         <p>纬度: {{ locationInfo.latitude }}</p>
       </div>
     </div>
-    <div class="map-container">
-      <img :src="mapUrl">
-    </div>
-    <!-- https://restapi.amap.com/v3/staticmap?location=126.63396014359466,45.72398605359935&zoom=16&size=750*300&markers=mid,,A:126.63396014359466,45.72398605359935&key=720655fed978632fd548b69f8808bc72 -->
     <div v-if="navigationResponse" class="navigation-response">
       <p>{{ navigationResponse }}</p>
     </div>
@@ -27,10 +23,9 @@
 import { ref, onMounted, onUnmounted,computed } from 'vue'
 import axios from 'axios'
 import { chat } from '@/services/AIService'
-const mapUrl = computed<string>(() => {
-  if (!locationInfo.value) return ''
-  return `https://restapi.amap.com/v3/staticmap?location=${locationInfo.value.longitude},${locationInfo.value.latitude}&zoom=16&size=750*300&markers=mid,,A:${locationInfo.value.longitude},${locationInfo.value.latitude}&key=720655fed978632fd548b69f8808bc72`
-})
+// 导入音频文件
+import mediaWrongAudio from '@/assets/audio/navigator/media_wrong.mp3'
+
 // 定义类型接口
 interface LocationInfo {
   latitude: number;
@@ -134,7 +129,7 @@ const initCamera = async () => {
     }
   } catch (error: unknown) {
     console.error('相机访问失败:', error);
-    const media_wronga = new Audio('/src/assets/audio/navigator/media_wrong.mp3')
+    const media_wronga = new Audio(mediaWrongAudio)
     media_wronga.play()
     // 根据错误类型提供具体的错误信息
     const mediaError = error as MediaError;
