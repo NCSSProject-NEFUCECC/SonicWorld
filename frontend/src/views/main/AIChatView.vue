@@ -14,7 +14,7 @@
     ">
     <div class="greeting">
       <img src="@/assets/xiaozhi.png" alt="小智AI" class="xiaozhi-image" />
-      <p>你好！我是智能导盲助手，有什么问题尽管问我吧。</p>
+      <p>{{ greetingMessage || '正在获取天气和时间信息。。。' }}</p>
     </div>
     <div class="chat-container"  style="flex: 1;"  ref="chatContainer">
       <div class="chat-messages">
@@ -92,7 +92,7 @@ const videoElement = ref<HTMLVideoElement | null>(null)
 let mediaStream: MediaStream | null = null
 const canvas = document.createElement('canvas')
 const context = canvas.getContext('2d')
-
+const greetingMessage = ref('')
 // 初始化相机
 const initCamera = async () => {
   try {
@@ -141,9 +141,44 @@ const captureAndSendImage = async (intent: string) => {
   }
 }
 
+const getWeatherInfo = async () => {
+  try {
+    // 获取地理位置
+    const position = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+      })
+    })
+
+    // 发送位置信息到后端获取天气
+    const response = await fetch('http://127.0.0.1:5000/api/weather', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        location: {
+          longitude: (position as GeolocationPosition).coords.longitude,
+          latitude: (position as GeolocationPosition).coords.latitude
+        }
+      })
+    })
+
+    const data = await response.json()
+    if (data.status === 'success') {
+      greetingMessage.value = `${data.data.message}`
+    }
+  } catch (error) {
+    console.error('获取天气信息失败，错误信息：', error)
+  }
+}
+
 // 组件挂载时初始化相机
 onMounted(() => {
   initCamera();
+  getWeatherInfo();
 })
 
 // 组件卸载时清理资源
@@ -169,7 +204,7 @@ try {
   const imageData = await captureAndSendImage('默认意图');
   // alert("以"+user_token.value+"身份登录")
   // 使用fetch API发送请求并处理流式响应
-  fetch('http://101.42.16.55:5000/api/chat', {
+  fetch('http://127.0.0.1:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
