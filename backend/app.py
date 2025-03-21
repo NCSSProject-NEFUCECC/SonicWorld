@@ -128,14 +128,14 @@ def get_weather():
         else:
             return jsonify({
                 'status': 'error',
-                'message': '获取天气数据失败'
+                'message': '抱歉，没有获取到天气信息'
             }), 500
             
     except Exception as e:
         print(f"获取天气信息错误: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': '天气服务暂时不可用'
+            'message': '抱歉，没有获取到天气信息'
         }), 500
     
 
