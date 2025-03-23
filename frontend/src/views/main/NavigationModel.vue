@@ -365,6 +365,7 @@ onUnmounted(() => {
 
 .camera-container {
   flex: 3;
+  margin: 3%;
   height: 60%;
 }
 
@@ -397,10 +398,8 @@ video {
 }
 
 .navigation-response {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
+  margin:3%;
+  height: 15%;
   background-color: rgba(0, 0, 0, 0.7);
   color: white;
   padding: 8px;
