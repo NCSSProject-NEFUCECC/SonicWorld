@@ -153,7 +153,7 @@ const getWeatherInfo = async () => {
     })
 
     // 发送位置信息到后端获取天气
-    const response = await fetch('http://127.0.0.1:5000/api/weather', {
+    const response = await fetch('http://101.42.16.55:5000/api/weather', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -204,7 +204,7 @@ try {
   const imageData = await captureAndSendImage('默认意图');
   // alert("以"+user_token.value+"身份登录")
   // 使用fetch API发送请求并处理流式响应
-  fetch('http://127.0.0.1:5000/api/chat', {
+  fetch('http://101.42.16.55:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

@@ -44,7 +44,7 @@ def get_weather():
         api_key = "QoJVR67908vzujP0"
         
         # 构建 API URL
-        # url = f"https://api.caiyunapp.com/v2.6/{api_key}/{coordinates}/realtime"
+        url = f"https://api.caiyunapp.com/v2.6/{api_key}/{coordinates}/realtime"
         print("url:",url)
         
         # 发送请求获取天气数据
