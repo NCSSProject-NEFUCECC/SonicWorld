@@ -35,7 +35,7 @@ import HeaderView from '@/views/header/index.vue'
 }
 
 .main-content {
-  flex: 1;
+  
   margin-left: 50px;
   align-content: center;
   width: calc(100% - 50px);
