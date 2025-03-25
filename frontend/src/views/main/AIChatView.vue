@@ -93,6 +93,97 @@ let mediaStream: MediaStream | null = null
 const canvas = document.createElement('canvas')
 const context = canvas.getContext('2d')
 const greetingMessage = ref('')
+// 新增音频相关状态和函数
+const audioContext = ref<AudioContext | null>(null)
+const audioQueue = ref<Uint8Array[]>([])
+const isPlayingAudio = ref(false)
+const activeAudioSource = ref<AudioBufferSourceNode | null>(null)
+
+// 初始化音频上下文
+onMounted(() => {
+  audioContext.value = new (window.AudioContext || (window as any).webkitAudioContext)()
+  initCamera()
+  getWeatherInfo()
+})
+
+// 播放音频函数
+const playAudio = (audioData: Uint8Array): Promise<void> => {
+  return new Promise((resolve) => {
+    if (!audioContext.value) {
+      console.error('AudioContext not initialized')
+      return resolve()
+    }
+
+    const wavBuffer = encodeWav(audioData, 22050)
+    audioContext.value.decodeAudioData(wavBuffer).then(audioBuffer => {
+      const source = audioContext.value!.createBufferSource()
+      activeAudioSource.value = source
+      source.buffer = audioBuffer
+      source.connect(audioContext.value!.destination)
+      
+      source.onended = () => {
+        source.disconnect()
+        activeAudioSource.value = null
+        isPlayingAudio.value = false
+        processAudioQueue()
+        resolve()
+      }
+      
+      isPlayingAudio.value = true
+      source.start()
+    }).catch(error => {
+      console.error('Error decoding audio:', error)
+      resolve()
+    })
+  })
+}
+
+// 处理音频队列
+const processAudioQueue = async () => {
+  if (isPlayingAudio.value || audioQueue.value.length === 0) return
+  const nextAudio = audioQueue.value.shift()!
+  await playAudio(nextAudio)
+}
+
+// WAV编码器
+const encodeWav = (pcmData: Uint8Array, sampleRate: number): ArrayBuffer => {
+  const numChannels = 1
+  const bytesPerSample = 2
+  const dataSize = pcmData.length
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+
+  // RIFF头部
+  writeString(view, 0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeString(view, 8, 'WAVE')
+
+  // fmt子块
+  writeString(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true) // PCM格式
+  view.setUint16(22, numChannels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true)
+  view.setUint16(32, numChannels * bytesPerSample, true)
+  view.setUint16(34, 16, true)
+
+  // data子块
+  writeString(view, 36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  // 填充PCM数据
+  new Uint8Array(buffer).set(pcmData, 44)
+
+  return buffer
+}
+
+const writeString = (view: DataView, offset: number, str: string) => {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i))
+  }
+}
+
 // 初始化相机
 const initCamera = async () => {
   try {
@@ -169,6 +260,7 @@ const getWeatherInfo = async () => {
     const data = await response.json()
     if (data.status === 'success') {
       greetingMessage.value = `${data.data.message}`
+      console.log('获取天气信息成功，天气信息：', data.data.message)
     }
   } catch (error) {
     console.error('获取天气信息失败，错误信息：', error)
@@ -187,102 +279,98 @@ onUnmounted(() => {
   if (mediaStream) {
     mediaStream.getTracks().forEach((track) => track.stop());
   }
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop())
+  }
+  activeAudioSource.value?.disconnect()
+  audioContext.value?.close()
 })
 
 const sendMessage = async () => {
-if (!userInput.value.trim()) return
-const currentUserInput = userInput.value // 保存当前用户输入
-const user_token = inject('user_token', ref(''))
-chatMessages.value.push({role:'user',content: currentUserInput})
-try {
-  loading.value = true
-
-  // 使用消息管理函数(历史记录处理)
-  userInput.value = ''
+  if (!userInput.value.trim()) return
+  const currentUserInput = userInput.value
+  const user_token = inject('user_token', ref(''))
   
-  // 先捕获图像
-  const imageData = await captureAndSendImage('默认意图');
-  // alert("以"+user_token.value+"身份登录")
-  // 使用fetch API发送请求并处理流式响应
-  fetch('http://101.42.16.55:5000/api/chat', {
+  chatMessages.value.push({role:'user', content: currentUserInput})
+  try {
+    loading.value = true
+    userInput.value = ''
+    
+    const imageData = await captureAndSendImage('默认意图')
+    
+    const response = await fetch('http://101.42.16.55:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         messages: chatMessages.value,
-        image: imageData, // 每次请求都发送图像数据
+        image: imageData,
         user_token: sessionStorage.getItem('user_token')
       })
-    }).then(async response => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('无法获取响应流');
-      }
-      const handleStream=async()=>{
-        let receivedText = '';
-        // 创建一个初始的空消息
-        const assistantMessageIndex = chatMessages.value.push({role:'assistant',content: ''}) - 1;
-          
-          while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              console.log('流式响应接收完成');
-              break;
-            }
-            
-            // 将接收到的数据块转换为文本
-            const chunk = new TextDecoder().decode(value);
-            console.log('接收到数据块:', chunk);
-            
-            // 处理SSE格式的数据
-            const lines = chunk.split('\n\n');
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const content = line.substring(6);
-                if (content === '[完成]') {
-                  console.log('导航指引完成');
-                } else {
-                  // 累积接收到的文本
-                  receivedText += content;
-                  // 更新最后一条消息的内容，而不是添加新消息
-                  chatMessages.value[assistantMessageIndex].content = receivedText;
-                  if(receivedText==='领航模式'){
-                    router.push({
-                      path: '/navigation',
-                      query: { lastInput: currentUserInput }
-                    })
-                  }
-                }
-              }
-            }
-          }
-          await nextTick(); // 等待 DOM 更新
-  if (chatContainer.value) {
-    chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-  }
-      }
-      // 调用处理流的函数
-      handleStream();
-           
     })
 
-  if(chatMessages.value.length >= 2*limitNum) {
-    ElMessage.error('消息数量超过限制')
-    filled.value=true;
+    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`)
+    if (!response.body) throw new Error('无法获取响应流')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let receivedText = ''
+    const assistantMessageIndex = chatMessages.value.push({role:'assistant', content: ''}) - 1
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const content = line.substring(6)
+          if (content === '[完成]') {
+            console.log('对话完成')
+          } else {
+            receivedText += content
+            chatMessages.value[assistantMessageIndex].content = receivedText
+            
+            if (receivedText === '领航模式') {
+              router.push({
+                path: '/navigation',
+                query: { lastInput: currentUserInput }
+              })
+            }
+          }
+        } else if (line.startsWith('data:audio,')) {
+          console.log('收到音频数据')
+          const hexString = line.substring(11)
+          const audioData = new Uint8Array(
+            hexString.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+          )
+          audioQueue.value.push(audioData)
+          processAudioQueue()
+        }
+      }
+      
+      await nextTick()
+      if (chatContainer.value) {
+        chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+      }
+    }
+
+    if (chatMessages.value.length >= 2 * limitNum) {
+      ElMessage.error('消息数量超过限制')
+      filled.value = true
+    }
+  } catch (error) {
+    ElMessage.error('请求失败: ' + (error as Error).message)
+    general_errora.play()
+    console.error(error)
+  } finally {
+    loading.value = false
   }
-} catch (error) {
-  ElMessage.error('请求失败: ' + (error as Error).message)
-// 播放错误提示音
-general_errora.play()
-  console.log(error)
-} finally {
-  loading.value = false
-}
 }
 
 </script>

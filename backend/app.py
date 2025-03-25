@@ -11,6 +11,8 @@ from chater import convert_to_multimodal, intent_recognition
 import chater
 from datetime import datetime
 from database import db, User
+from dashscope.audio.tts_v2 import SpeechSynthesizer, AudioFormat, ResultCallback
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
@@ -24,6 +26,35 @@ with app.app_context():
 dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
 
 user_messages_dic = {}
+
+TTS_MODEL = "cosyvoice-v1"
+TTS_VOICE = "longxiaochun"  # 可根据需要调整
+def get_timestamp():
+    now = datetime.now()
+    return now.strftime("[%Y-%m-%d %H:%M:%S.%f]")
+class StreamingAudioCallback(ResultCallback):
+    def __init__(self):
+        self.audio_buffer = bytearray()
+
+    def on_open(self):
+        print(get_timestamp() + " WebSocket 已连接")
+
+    def on_complete(self):
+        print(get_timestamp() + " 语音合成任务完成")
+
+    def on_error(self, message: str):
+        print(get_timestamp() + f" 语音合成错误: {message}")
+
+    def on_close(self):
+        print(get_timestamp() + " WebSocket 连接关闭")
+
+    def on_event(self, message):
+        pass
+
+    def on_data(self, data: bytes) -> None:
+        # print(get_timestamp() + f" 接收到音频数据长度: {len(data)}")
+        self.audio_buffer.extend(data)
+
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -45,7 +76,7 @@ def get_weather():
         
         # 构建 API URL
         url = f"https://api.caiyunapp.com/v2.6/{api_key}/{coordinates}/realtime"
-        print("url:",url)
+        # print("url:",url)
         
         # 发送请求获取天气数据
         import requests
@@ -256,6 +287,13 @@ def process_navigation(image_path, location, destination=None, heading=None):
 
 
 def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
+    callback = StreamingAudioCallback()
+    synthesizer = SpeechSynthesizer(
+        model=TTS_MODEL,
+        voice=TTS_VOICE,
+        format=AudioFormat.PCM_22050HZ_MONO_16BIT,
+        callback=callback
+    )
     # 如果没有提供图像路径，使用默认图像
     if not image_path:
         image_path = r"img/default.png"
@@ -275,19 +313,19 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
         yield f"data: 抱歉，系统处理出现错误。\n\n"
         return
     llm_basechat = [
-                {"role": "system", "content": "你是一位情感陪伴专家，你的任务是陪伴一位盲人聊天，在聊天中，你需要关注用户的情感需要，不要反复提及用户残疾的情况。"},
+                {"role": "system", "content": "你是一位情感陪伴专家，你的任务是陪伴一位盲人聊天，在聊天中，你需要关注用户的情感需要，不要反复提及用户残疾的情况。由于你生成的文字会被转换成语音，因此你不要生成特殊符号，否则会导致合成语音失败。"},
             ]
     llm_visual_finder = [
-                {"role": "system", "content": "你的用户是一位盲人,他正在寻找某建筑某地标或者某物。他现在拍摄了一张他正前方的照片，你需要分析图片和他的需求，告诉他他所寻找的东西在什么地方，他需要怎么做才能达到他的目的。此处给出两个实例：1、用户询问图书馆在哪，你应当回答图书馆的位置，并且告诉他应该怎么走才能到达图书馆；2、用户询问茄子在哪，并上传了一张冰箱内部的图片。你应当告诉他茄子在那一层的那一侧（例如：茄子在冰箱从下往上数第二层的最左边）。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。"},
+                {"role": "system", "content": "你的用户是一位盲人,他正在寻找某建筑某地标或者某物。他现在拍摄了一张他正前方的照片，你需要分析图片和他的需求，告诉他他所寻找的东西在什么地方，他需要怎么做才能达到他的目的。此处给出两个实例：1、用户询问图书馆在哪，你应当回答图书馆的位置，并且告诉他应该怎么走才能到达图书馆；2、用户询问茄子在哪，并上传了一张冰箱内部的图片。你应当告诉他茄子在那一层的那一侧（例如：茄子在冰箱从下往上数第二层的最左边）。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。由于你生成的文字会被转换成语音，因此你不要生成特殊符号，否则会导致合成语音失败。"},
             ]
     llm_visual_recoder = [
-                {"role": "system", "content": "你的用户是一位盲人,他向你传入了一张他拍摄的前方的图像，他想知道他的摄像头拍到了什么东西。你需要根据用户的需求，分析图片内容，做出符合用户需求的回答。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。"},
+                {"role": "system", "content": "你的用户是一位盲人,他向你传入了一张他拍摄的前方的图像，他想知道他的摄像头拍到了什么东西。你需要根据用户的需求，分析图片内容，做出符合用户需求的回答。注意，你的用户是一位盲人，所以你应当以一个情感专家的语气回答用户，关注用户的情感需要，不要反复提及用户残疾的情况，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出。由于你生成的文字会被转换成语音，因此你不要生成特殊符号，否则会导致合成语音失败。"},
             ]
     llm_text_reader = [
-                {"role": "system", "content": "你的用户是一位盲人，他现在正在阅读一段文字。你需要帮助用户阅读面前的文件，即你的任务是分析图像，找到用户阅读的东西，并将它们阅读出来，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
+                {"role": "system", "content": "你的用户是一位盲人，他现在正在阅读一段文字。你需要帮助用户阅读面前的文件，即你的任务是分析图像，找到用户阅读的东西，并将它们阅读出来，并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出,由于你生成的文字会被转换成语音，因此你不要生成特殊符号，否则会导致合成语音失败。"},
             ]
     llm_legal_consultant = [
-                {"role": "system", "content": "你的用户是一位盲人，他现在正在寻求法律帮助。你需要帮助他找到合适的法律资源，并提供法律建议。"},
+                {"role": "system", "content": "你的用户是一位盲人，他现在正在寻求法律帮助。你需要帮助他找到合适的法律资源，并提供法律建议。由于你生成的文字会被转换成语音，因此你不要生成特殊符号，否则会导致合成语音失败。"},
             ]
     llm_navigator = [
                 {"role": "system", "content": "你的用户是一位盲人，他现在正在进行导航任务。你需要帮助他找到目的地，并提供导航建议。并且要避免让用户看/观察之类的意思，因为用户是一个盲人，任何让用户看的意思都不应该被输出"},
@@ -322,14 +360,26 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                             full_text += text_content
                             # 发送文本内容到前端
                             yield f"data: {text_content}\n\n"
+                            # 流式合成语音
+                            synthesizer.streaming_call(text_content)
+                            time.sleep(0.1)  # 给合成器处理时间
+                            
+                            # 发送音频数据
+                            audio_data = bytes(callback.audio_buffer)
+                            if audio_data:
+                                yield f"data:audio,{audio_data.hex()}\n\n"
+                                callback.audio_buffer.clear()
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
-                print()
-        
+                synthesizer.streaming_complete()
+                audio_data = bytes(callback.audio_buffer)
+                if audio_data:
+                    yield f"data:audio,{audio_data.hex()}\n\n"
+                    callback.audio_buffer.clear()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
-                print("响应全文：", full_text)
+                # print("响应全文：", full_text)
             except Exception as e:
                 print(f"普通聊天API调用错误: {str(e)}")
                 if "Connection" in str(e):
@@ -362,14 +412,23 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                         text_content = chunk.output.choices[0].message.content[0].get('text', '')
                         if text_content:
                             print(f"{text_content}")
-
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
+                            # 流式合成语音
+                            synthesizer.streaming_call(text_content)
+                            time.sleep(0.1)  # 给合成器处理时间
+                            
+                            # 发送音频数据
+                            audio_data = bytes(callback.audio_buffer)
+                            if audio_data:
+                                yield f"data:audio,{audio_data.hex()}\n\n"
+                                print("发送音频数据，长度：", len(audio_data))
+                                callback.audio_buffer.clear()
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
                 print()
-        
+                synthesizer.streaming_complete()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
@@ -408,12 +467,21 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
 
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
+                            # 流式合成语音
+                            synthesizer.streaming_call(text_content)
+                            time.sleep(0.1)  # 给合成器处理时间
+                            
+                            # 发送音频数据
+                            audio_data = bytes(callback.audio_buffer)
+                            if audio_data:
+                                yield f"data:audio,{audio_data.hex()}\n\n"
+                                callback.audio_buffer.clear()
                             # 发送音频数据到前端
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
                 print()
-        
+                synthesizer.streaming_complete()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
@@ -451,14 +519,20 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                             print(f"{text_content}")
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
-                            # 发送音频数据到前端
+                            # 流式合成语音
+                            synthesizer.streaming_call(text_content)
+                            time.sleep(0.1)  # 给合成器处理时间
+                            
+                            # 发送音频数据
+                            audio_data = bytes(callback.audio_buffer)
+                            if audio_data:
+                                yield f"data:audio,{audio_data.hex()}\n\n"
+                                callback.audio_buffer.clear()
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
                 print()
-        
-                yield f"data: [完成]\n\n"
-                #synthesizer.streaming_complete()
+                synthesizer.streaming_complete()
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
             except Exception as e:
@@ -489,11 +563,20 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                             print(f"{text_content}")
                             full_text += text_content
                             yield f"data: {text_content}\n\n"
+                            # 流式合成语音
+                            synthesizer.streaming_call(text_content)
+                            time.sleep(0.1)  # 给合成器处理时间
+                            
+                            # 发送音频数据
+                            audio_data = bytes(callback.audio_buffer)
+                            if audio_data:
+                                yield f"data:audio,{audio_data.hex()}\n\n"
+                                callback.audio_buffer.clear()
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
                 print()
-        
+                synthesizer.streaming_complete()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
