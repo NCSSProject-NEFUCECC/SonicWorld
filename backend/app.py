@@ -12,6 +12,7 @@ import chater
 from datetime import datetime
 from database import db, User
 from dashscope.audio.tts_v2 import SpeechSynthesizer, AudioFormat, ResultCallback
+from weather import get_time_of_day,get_weather_word,weather_map
 
 
 app = Flask(__name__)
@@ -65,7 +66,7 @@ def get_weather():
     try:
         data = request.json
         location = data.get('location', {})
-        
+        print("location:",location)
         if not location or 'longitude' not in location or 'latitude' not in location:
             pass
             
@@ -86,74 +87,30 @@ def get_weather():
         if data['status'] == 'ok':
             weather = data['result']['realtime']
             
-            # 天气状况映射表
-            weather_map = {
-                'CLEAR_DAY': '晴天',
-                'CLEAR_NIGHT': '晴夜',
-                'PARTLY_CLOUDY_DAY': '多云',
-                'PARTLY_CLOUDY_NIGHT': '多云',
-                'CLOUDY': '阴天',
-                'LIGHT_RAIN': '小雨',
-                'MODERATE_RAIN': '中雨',
-                'HEAVY_RAIN': '大雨',
-                'STORM_RAIN': '暴雨',
-                'LIGHT_SNOW': '小雪',
-                'MODERATE_SNOW': '中雪',
-                'HEAVY_SNOW': '大雪',
-                'STORM_SNOW': '暴雪',
-                'FOG': '雾',
-                'DUST': '浮尘',
-                'HEAVY_HAZE': '霾',
-            }
-            
             # 获取天气数据
             temperature = round(weather['temperature'])  # 温度
             weather_desc = weather_map.get(weather['skycon'], '未知天气')  # 天气描述
             humidity = round(weather['humidity'] * 100)  # 湿度
 
-            def get_weather_word(temperature):
-                if temperature < 5:
-                    return "寒冷"
-                elif temperature < 12:
-                    return "冷"
-                elif temperature < 18:
-                    return "凉爽"  
-                elif temperature < 25:
-                    return "舒适"
-                elif temperature < 30:
-                    return "温暖"
-                elif temperature < 35:
-                    return "热"
-                else:
-                    return "炎热"
-            
-            def get_time_of_day():
-                current_time = datetime.now().time()
-                morning_start = datetime.strptime("06:00:00", "%H:%M:%S").time()
-                morning_end = datetime.strptime("11:00:00", "%H:%M:%S").time()
-                noon_start = datetime.strptime("11:00:00", "%H:%M:%S").time()
-                noon_end = datetime.strptime("13:00:00", "%H:%M:%S").time()
-                afternoon_start = datetime.strptime("13:00:00", "%H:%M:%S").time()
-                afternoon_end = datetime.strptime("18:00:00", "%H:%M:%S").time()
-                evening_start = datetime.strptime("18:00:00", "%H:%M:%S").time()
-                evening_end = datetime.strptime("23:59:59", "%H:%M:%S").time()
-                midnight_start = datetime.strptime("00:00:00", "%H:%M:%S").time()
-                midnight_end = datetime.strptime("05:59:59", "%H:%M:%S").time()
-                if morning_start <= current_time <= morning_end:
-                    return "早上好"
-                elif noon_start <= current_time <= noon_end:
-                    return "中午好"
-                elif afternoon_start <= current_time <= afternoon_end:
-                    return "下午好"
-                elif evening_start <= current_time <= evening_end:
-                    return "晚上好"
-                elif midnight_start <= current_time <= midnight_end:
-                    return "夜深了，早点休息哦"
+            text = f"{get_time_of_day()}。今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%"
+            callback = StreamingAudioCallback()
+            synthesizer = SpeechSynthesizer(
+                model=TTS_MODEL,
+                voice=TTS_VOICE,
+                format=AudioFormat.PCM_22050HZ_MONO_16BIT,
+                callback=callback
+            )
+            synthesizer.streaming_call(text)
+            time.sleep(0.5)
+            synthesizer.streaming_complete()
+            audio_data = bytes(callback.audio_buffer)
+            print("发送音频长度：",len(audio_data))
             # print(f"返回值：{get_time_of_day()},今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%")
             return jsonify({
                 'status': 'success',
                 'data': {
-                    'message': f"{get_time_of_day()}。今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%"
+                    'message': f"{get_time_of_day()}。今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%",
+                    'audio': audio_data.hex()
                 }
             }), 200
         else:
@@ -427,8 +384,11 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
-                print()
                 synthesizer.streaming_complete()
+                audio_data = bytes(callback.audio_buffer)
+                if audio_data:
+                    yield f"data:audio,{audio_data.hex()}\n\n"
+                    callback.audio_buffer.clear()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
@@ -480,8 +440,11 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
-                print()
                 synthesizer.streaming_complete()
+                audio_data = bytes(callback.audio_buffer)
+                if audio_data:
+                    yield f"data:audio,{audio_data.hex()}\n\n"
+                    callback.audio_buffer.clear()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
@@ -531,8 +494,11 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
-                print()
                 synthesizer.streaming_complete()
+                audio_data = bytes(callback.audio_buffer)
+                if audio_data:
+                    yield f"data:audio,{audio_data.hex()}\n\n"
+                    callback.audio_buffer.clear()
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
             except Exception as e:
@@ -575,8 +541,11 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                     except Exception as e:
                         print(f"处理流式输出块错误: {str(e)}")
                         continue
-                print()
                 synthesizer.streaming_complete()
+                audio_data = bytes(callback.audio_buffer)
+                if audio_data:
+                    yield f"data:audio,{audio_data.hex()}\n\n"
+                    callback.audio_buffer.clear()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)

@@ -123,15 +123,14 @@
   const isCollapse = ref(true)
   const isLoggedIn = ref(false)
   const menus = ref([
-    { name: '开始对话', path: '/ai/chat' },
+    { 
+      name: '开始对话', 
+      path: '/ai/chat' 
+    },
     {
       name: '领航模式',
       path: '/navigation'
     },
-    { name: '个人账号', path: '/profile' },
-    { name: '我的关注', path: '/favorites' },
-    { name: '论文收藏', path: '/papers' },
-    { name: '浏览历史', path: '/history' }
   ])
   
   const handleOpen = (key: string, keyPath: string[]) => {

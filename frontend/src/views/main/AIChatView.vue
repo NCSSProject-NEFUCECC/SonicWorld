@@ -232,8 +232,12 @@ const captureAndSendImage = async (intent: string) => {
   }
 }
 
+const isWeatherRequested = ref(false)
+
 const getWeatherInfo = async () => {
   try {
+    if (isWeatherRequested.value) return
+    isWeatherRequested.value = true
     // 获取地理位置
     const position = await new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -244,7 +248,7 @@ const getWeatherInfo = async () => {
     })
 
     // 发送位置信息到后端获取天气
-    const response = await fetch('http://101.42.16.55:5000/api/weather', {
+    const response = await fetch('http://127.0.0.1:5000/api/weather', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -261,6 +265,21 @@ const getWeatherInfo = async () => {
     if (data.status === 'success') {
       greetingMessage.value = `${data.data.message}`
       console.log('获取天气信息成功，天气信息：', data.data.message)
+      
+      // 处理音频数据
+      if (data.data.audio) {
+        console.log('天气音频数据已收到')
+        // 获取音频数据的十六进制字符串
+        const audioHexString = data.data.audio
+        // 将十六进制字符串转换为Uint8Array
+        const audioData = new Uint8Array(
+          audioHexString.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
+        )
+        // 将音频数据添加到队列并播放
+        audioQueue.value.push(audioData)
+        processAudioQueue()
+        console.log('天气音频数据已添加到播放队列')
+      }
     }
   } catch (error) {
     console.error('获取天气信息失败，错误信息：', error)
@@ -298,7 +317,7 @@ const sendMessage = async () => {
     
     const imageData = await captureAndSendImage('默认意图')
     
-    const response = await fetch('http://101.42.16.55:5000/api/chat', {
+    const response = await fetch('http://127.0.0.1:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
