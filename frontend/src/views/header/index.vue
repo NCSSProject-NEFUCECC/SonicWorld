@@ -15,8 +15,8 @@
             <span style="margin-left: 10px">无障碍助手</span>
           </template>
         </el-menu-item>
-        <el-menu-item index="1" @click="handleOpen('1', [])">
-          <el-icon><Search /></el-icon>
+        <el-menu-item index="1" @click="handleOpen('1', [])" aria-label="开始对话">
+          <el-icon aria-hidden="true"><Search /></el-icon>
           <template #title>开始对话</template>
         </el-menu-item>
         <el-menu-item index="2" @click="handleOpen('2', [])">
@@ -46,14 +46,8 @@
                 </div>
               </div>
               <div class="login-menu">
-                <div class="menu-item">
+                <div class="menu-item" role="menuitem" aria-label="个人中心">
                   <span>个人中心</span>
-                </div>
-                <div class="menu-item">
-                  <span>使用记录</span>
-                </div>
-                <div class="menu-item">
-                  <span>辅助设置</span>
                 </div>
                 <div class="menu-item" @click="handleLogout">
                   <span>退出登录</span>
@@ -118,6 +112,8 @@
   import wrongUsrpsdAudio from '@/assets/audio/login/wrong_usrpsd.mp3'
   import wrongServerAudio from '@/assets/audio/login/wrong_server.mp3'
   import otherWrongAudio from '@/assets/audio/login/other_wrong.mp3'
+  import successLoginAudio from '@/assets/audio/login/success_login.mp3'
+  import loginReminderAudio from '@/assets/audio/login/login_reminder.mp3'
   const haveLogin=ref<string|null>(null);
   haveLogin.value=sessionStorage.getItem('user_token')
   const isCollapse = ref(true)
@@ -132,12 +128,14 @@
       path: '/navigation'
     },
   ])
-  
+  const loginRemindera = new Audio(loginReminderAudio)
+   
   const handleOpen = (key: string, keyPath: string[]) => {
     console.log('key', key, 'keyPath', keyPath)
     console.log('user_token',sessionStorage.getItem('user_token'))
     if(key!=='1' && sessionStorage.getItem('user_token')==null){
       ElMessage.error('请先登录')
+      loginRemindera.play()
       router.push(menus.value[0].path)
       return
     }
@@ -174,31 +172,9 @@
   }
 
   const wrong_usrpsda = new Audio(wrongUsrpsdAudio)
-  wrong_usrpsda.addEventListener('loadeddata', () => {
-    console.log('音频资源 wrong_usrpsd.mp3 加载成功')
-  })
-  wrong_usrpsda.addEventListener('error', (e) => {
-    console.error('音频资源 wrong_usrpsd.mp3 加载失败:', e)
-    ElMessage.error('音频资源加载失败')
-  })
-  
   const wrong_servera = new Audio(wrongServerAudio)
-  wrong_servera.addEventListener('loadeddata', () => {
-    console.log('音频资源 wrong_server.mp3 加载成功')
-  })
-  wrong_servera.addEventListener('error', (e) => {
-    console.error('音频资源 wrong_server.mp3 加载失败:', e)
-    ElMessage.error('音频资源加载失败')
-  })
-  
   const other_wronga = new Audio(otherWrongAudio)
-  other_wronga.addEventListener('loadeddata', () => {
-    console.log('音频资源 other_wrong.mp3 加载成功')
-  })
-  other_wronga.addEventListener('error', (e) => {
-    console.error('音频资源 other_wrong.mp3 加载失败:', e)
-    ElMessage.error('音频资源加载失败')
-  })
+  const success_logina = new Audio(successLoginAudio)
 
   const handleSubmit = async () => {
     if (!loginFormRef.value) return
@@ -214,6 +190,7 @@
         isLoggedIn.value = true
         loginDialogVisible.value = false
         haveLogin.value=sessionStorage.getItem('user_token')
+        success_logina.play()
       } else {
         ElMessage.error(response.data.message || '登录失败')
         wrong_servera.play()

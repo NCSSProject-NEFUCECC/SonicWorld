@@ -66,7 +66,7 @@ def get_weather():
     try:
         data = request.json
         location = data.get('location', {})
-        print("location:",location)
+        # print("location:",location)
         if not location or 'longitude' not in location or 'latitude' not in location:
             pass
             
@@ -104,7 +104,7 @@ def get_weather():
             time.sleep(0.5)
             synthesizer.streaming_complete()
             audio_data = bytes(callback.audio_buffer)
-            print("发送音频长度：",len(audio_data))
+            # print("发送音频长度：",len(audio_data))
             # print(f"返回值：{get_time_of_day()},今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%")
             return jsonify({
                 'status': 'success',

@@ -55,7 +55,91 @@ const videoLoaded = ref(false)
 const navigationStarted = ref(false)
 const cameraError = ref<string | null>(null)
 const cameraStatusMessage = ref('正在初始化摄像头...')
+// 新增音频相关状态和函数
+const audioContext = ref<AudioContext | null>(null)
+const audioQueue = ref<Uint8Array[]>([])
+const isPlayingAudio = ref(false)
+const activeAudioSource = ref<AudioBufferSourceNode | null>(null)
 
+
+// 播放音频函数
+const playAudio = (audioData: Uint8Array): Promise<void> => {
+  return new Promise((resolve) => {
+    if (!audioContext.value) {
+      console.error('AudioContext not initialized')
+      return resolve()
+    }
+
+    const wavBuffer = encodeWav(audioData, 22050)
+    audioContext.value.decodeAudioData(wavBuffer).then(audioBuffer => {
+      const source = audioContext.value!.createBufferSource()
+      activeAudioSource.value = source
+      source.buffer = audioBuffer
+      source.connect(audioContext.value!.destination)
+      
+      source.onended = () => {
+        source.disconnect()
+        activeAudioSource.value = null
+        isPlayingAudio.value = false
+        processAudioQueue()
+        resolve()
+      }
+      
+      isPlayingAudio.value = true
+      source.start()
+    }).catch(error => {
+      console.error('Error decoding audio:', error)
+      resolve()
+    })
+  })
+}
+
+// 处理音频队列
+const processAudioQueue = async () => {
+  if (isPlayingAudio.value || audioQueue.value.length === 0) return
+  const nextAudio = audioQueue.value.shift()!
+  await playAudio(nextAudio)
+}
+
+
+// WAV编码器
+const encodeWav = (pcmData: Uint8Array, sampleRate: number): ArrayBuffer => {
+  const numChannels = 1
+  const bytesPerSample = 2
+  const dataSize = pcmData.length
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+
+  // RIFF头部
+  writeString(view, 0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeString(view, 8, 'WAVE')
+
+  // fmt子块
+  writeString(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true) // PCM格式
+  view.setUint16(22, numChannels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true)
+  view.setUint16(32, numChannels * bytesPerSample, true)
+  view.setUint16(34, 16, true)
+
+  // data子块
+  writeString(view, 36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  // 填充PCM数据
+  new Uint8Array(buffer).set(pcmData, 44)
+
+  return buffer
+}
+
+const writeString = (view: DataView, offset: number, str: string) => {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i))
+  }
+}
 // 视频加载完成事件处理
 const handleVideoLoaded = () => {
   console.log('视频元素加载完成')
@@ -181,14 +265,14 @@ const initGeolocation = () => {
 }
 
 // 捕获视频帧并发送到后端
-const captureAndSendFrame = () => {
+const captureAndSendFrame = async () => {
   // 确保所有必要条件都满足
   if (!videoElement.value || !locationInfo.value || !cameraReady.value) {
-    console.log('条件不满足，延迟拍照', {
-      视频元素: !!videoElement.value,
-      位置信息: !!locationInfo.value,
-      相机就绪: cameraReady.value
-    })
+    // console.log('条件不满足，延迟拍照', {
+    //   视频元素: !!videoElement.value,
+    //   位置信息: !!locationInfo.value,
+    //   相机就绪: cameraReady.value
+    // })
     setTimeout(captureAndSendFrame, 1000) // 1秒后重试
     return
   }
@@ -203,10 +287,10 @@ const captureAndSendFrame = () => {
       console.log('成功捕获视频帧，准备发送到后端')
       
       // 清空之前的导航响应
-      navigationResponse.value = '正在分析环境...';
+      navigationResponse.value = '';
       
       // 使用fetch API发送请求并处理流式响应
-      fetch('http://101.42.16.55:5000/api/navigate', {
+      const response = await fetch('http://101.42.16.55:5000/api/navigate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -214,85 +298,79 @@ const captureAndSendFrame = () => {
         body: JSON.stringify({
           image: imageData,
           location: locationInfo.value,
-          heading: compassHeading.value, // 添加指南针朝向数据
+          heading: compassHeading.value,
           user_token: sessionStorage.getItem('user_token')
         })
       })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        
-        // 获取响应的可读流
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error('无法获取响应流');
-        }
-        navigationResponse.value = '';
-        // 处理流式响应
-        const processStream = async () => {
-          try {
-            let receivedText = '';
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              
-              if (done) {
-                console.log('流式响应接收完成');
-                break;
-              }
-              
-              // 将接收到的数据块转换为文本
-              const chunk = new TextDecoder().decode(value);
-              console.log('接收到数据块:', chunk);
-              
-              // 处理SSE格式的数据
-              const lines = chunk.split('\n\n');
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const content = line.substring(6);
-                  if (content === '[完成]') {
-                    console.log('导航指引完成');
-                  } else {
-                    // 累积接收到的文本
-                    receivedText += content;
-                    navigationResponse.value = receivedText;
-                  }
-                }
-              }
+
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`)
+      if (!response.body) throw new Error('无法获取响应流')
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let receivedText = ''
+      navigationResponse.value = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const content = line.substring(6)
+            if (content === '[完成]') {
+              console.log('导航指引完成')
+            } else {
+              receivedText += content
+              navigationResponse.value = receivedText
             }
-            
-            // 3秒后再次拍照发送
-            setTimeout(captureAndSendFrame, 3000);
-            
-          } catch (error) {
-            console.error('处理流式响应时出错:', error);
-            setTimeout(captureAndSendFrame, 5000); // 5秒后重试
+          } else if (line.startsWith('data:audio,')) {
+            console.log('收到音频数据')
+            const hexString = line.substring(11)
+            const audioData = new Uint8Array(
+              hexString.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+            )
+            audioQueue.value.push(audioData)
+            processAudioQueue()
           }
-        };
-        
-        // 开始处理流
-        processStream();
-      })
-      .catch(error => {
-        console.error('导航数据发送失败:', error);
-        navigationResponse.value = `发送失败: ${error.message}`;
-        // 发生错误时也尝试重新发送
-        setTimeout(captureAndSendFrame, 5000); // 5秒后重试
-      });
+        }
+      }
     }
   } catch (error) {
     console.error('拍照过程中出错:', error);
     setTimeout(captureAndSendFrame, 2000); // 2秒后重试
   }
+   
+  // // 检查音频队列状态，决定下一次捕获的时间
+  if (audioQueue.value.length === 0 && !isPlayingAudio.value) {
+    // 如果没有音频在播放且队列为空，等待较短时间后再次捕获
+    setTimeout(captureAndSendFrame, 300);
+  } else {
+    // 如果有音频在播放或队列非空，等待音频处理完成后再捕获
+    const checkAudioStatus = () => {
+      if (audioQueue.value.length === 0 && !isPlayingAudio.value) {
+        setTimeout(captureAndSendFrame, 300);
+      } else {
+        // 继续检查直到条件满足
+        setTimeout(checkAudioStatus, 500);
+      }
+    };
+    setTimeout(checkAudioStatus, 500);
+  }
 }
 
-// 组件挂载时初始化相机和地理位置
 onMounted(() => {
   console.log('组件挂载，开始初始化')
   // 初始化相机和地理位置
   initCamera()
   initGeolocation()
+  // 初始化音频上下文
+  audioContext.value = new (window.AudioContext || (window as any).webkitAudioContext)()
   // 初始化指南针
   // 检查设备是否支持方向事件
   if (window.DeviceOrientationEvent) {

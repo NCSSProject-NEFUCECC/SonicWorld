@@ -9,6 +9,35 @@ from dashscope.api_entities.dashscope_response import SpeechSynthesisResponse
 from dashscope.audio.tts_v2 import *
 import sounddevice
 import numpy as np
+import time
+
+TTS_MODEL = "cosyvoice-v1"
+TTS_VOICE = "longxiaochun"  # 可根据需要调整
+def get_timestamp():
+    now = datetime.now()
+    return now.strftime("[%Y-%m-%d %H:%M:%S.%f]")
+class StreamingAudioCallback(ResultCallback):
+    def __init__(self):
+        self.audio_buffer = bytearray()
+
+    def on_open(self):
+        print(get_timestamp() + " WebSocket 已连接")
+
+    def on_complete(self):
+        print(get_timestamp() + " 语音合成任务完成")
+
+    def on_error(self, message: str):
+        print(get_timestamp() + f" 语音合成错误: {message}")
+
+    def on_close(self):
+        print(get_timestamp() + " WebSocket 连接关闭")
+
+    def on_event(self, message):
+        pass
+
+    def on_data(self, data: bytes) -> None:
+        # print(get_timestamp() + f" 接收到音频数据长度: {len(data)}")
+        self.audio_buffer.extend(data)
 
 
 def parse_location_result(result):
@@ -112,16 +141,6 @@ def gpslal2gaodelal(location):  #将gps的经纬度转换为高德的经纬度
     
 # 新增处理导航请求的函数
 def process_navigation_request(image_path, current_location, destination=None, heading=None):
-    """处理前端发送的导航请求，以流式方式返回结果
-    
-    Args:
-        image_path: 保存的图像路径
-        current_location: 包含经纬度的当前位置信息字典
-        destination: 目标地点描述，如果为None则只分析环境不提供路线
-    
-    Returns:
-        生成器，用于流式返回导航指令或状态信息
-    """
     from flask import Response, stream_with_context
     
     def generate():
@@ -138,6 +157,14 @@ def process_navigation_request(image_path, current_location, destination=None, h
             # print(f"当前位置: 经度 {current_longitude}, 纬度 {current_latitude}")
             yield f"data: 当前位置: 经度 {current_longitude}, 纬度 {current_latitude}\n\n"
             
+            callback = StreamingAudioCallback()
+            synthesizer = SpeechSynthesizer(
+                model=TTS_MODEL,
+                voice=TTS_VOICE,
+                format=AudioFormat.PCM_22050HZ_MONO_16BIT,
+                callback=callback
+            )   
+
             # 路线信息
             route_guidance = ""
             
@@ -204,12 +231,22 @@ def process_navigation_request(image_path, current_location, destination=None, h
                         print(f"{text_content}", end="")
                         # 发送文本内容
                         yield f"data: {text_content}\n\n"
+                        synthesizer.streaming_call(text_content)
+                        time.sleep(0.1)  # 给合成器处理时间
+                        # 发送音频数据
+                        audio_data = bytes(callback.audio_buffer)
+                        if len(audio_data)>0:
+                            print("发送音频长度：",len(audio_data))
+                            yield f"data:audio,{audio_data.hex()}\n\n"
+                            callback.audio_buffer.clear()
                 except Exception as e:
                     print(f"处理流式输出块错误: {str(e)}")
                     continue
-            print()
-            
-            
+            synthesizer.streaming_complete()
+            audio_data = bytes(callback.audio_buffer)
+            if audio_data:
+                yield f"data:audio,{audio_data.hex()}\n\n"
+                callback.audio_buffer.clear()
             yield f"data: [完成]\n\n"
         
         except Exception as e:

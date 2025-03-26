@@ -82,7 +82,7 @@ const resetF=()=>{
 
 // 导入音频文件
 import generalErrorAudio from '@/assets/audio/general/general_error.mp3'
-import limitWrongAudio from '@/assets/audio/chat/limit_wrong.mp3'
+import limitWrongAudio from '@/assets/audio/chat/his_msg_limit.mp3'
 
 const general_errora = new Audio(generalErrorAudio)
 const limit_wronga = new Audio(limitWrongAudio)
@@ -248,7 +248,7 @@ const getWeatherInfo = async () => {
     })
 
     // 发送位置信息到后端获取天气
-    const response = await fetch('http://127.0.0.1:5000/api/weather', {
+    const response = await fetch('http://101.42.16.55:5000/api/weather', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -317,7 +317,7 @@ const sendMessage = async () => {
     
     const imageData = await captureAndSendImage('默认意图')
     
-    const response = await fetch('http://127.0.0.1:5000/api/chat', {
+    const response = await fetch('http://101.42.16.55:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -381,6 +381,7 @@ const sendMessage = async () => {
 
     if (chatMessages.value.length >= 2 * limitNum) {
       ElMessage.error('消息数量超过限制')
+      limit_wronga.play()
       filled.value = true
     }
   } catch (error) {
