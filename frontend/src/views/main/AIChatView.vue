@@ -66,6 +66,7 @@ import { chat } from '@/services/AIService'
 import { ElMessage } from 'element-plus'
 import { ref, onMounted, onUnmounted, watch, nextTick, inject } from 'vue'
 import { useRouter } from 'vue-router'
+import { CookieUtils } from '@/utils/cookieUtils'
 
 const router = useRouter()
 const chatContainer = ref<HTMLElement | null>(null)
@@ -190,8 +191,8 @@ const initCamera = async () => {
     // 请求相机权限并获取视频流
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1440 },
+        height: { ideal: 2560 },
         facingMode: "environment" // 指定使用后置摄像头
       }
     })
@@ -246,7 +247,7 @@ const getWeatherInfo = async () => {
     })
 
     // 发送位置信息到后端获取天气
-    const response = await fetch('http://101.42.16.55:5000/api/weather', {
+    const response = await fetch('http://127.0.0.1:5000/api/weather', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -306,7 +307,7 @@ onUnmounted(() => {
 const sendMessage = async () => {
   if (!userInput.value.trim()) return
   const currentUserInput = userInput.value
-  const user_token = inject('user_token', ref(''))
+  const user_token = ref(CookieUtils.getCookie('user_token') || '')
   
   chatMessages.value.push({role:'user', content: currentUserInput})
   try {
@@ -315,7 +316,7 @@ const sendMessage = async () => {
     
     const imageData = await captureAndSendImage('默认意图')
     
-    const response = await fetch('http://101.42.16.55:5000/api/chat', {
+    const response = await fetch('http://127.0.0.1:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

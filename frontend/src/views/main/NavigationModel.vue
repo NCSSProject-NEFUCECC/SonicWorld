@@ -6,7 +6,7 @@
         <p v-if="compassHeading !== null">朝向: {{ compassHeading.toFixed(0) }}°</p>
       </div>
     </div>
-    <div v-if="navigationResponse" class="navigation-response">
+    <div class="navigation-response">
       <p>{{ navigationResponse }}</p>
     </div>
     <div v-if="!cameraReady" class="status-message">
@@ -188,8 +188,8 @@ const initCamera = async () => {
     // 请求相机权限并获取视频流
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 640 },
-        height: { ideal: 480 },
+        width: { ideal: 1440 },
+        height: { ideal: 2560 },
         facingMode: "environment" // 指定使用后置摄像头
       }
     })
@@ -203,8 +203,8 @@ const initCamera = async () => {
       console.log('视频流已设置到video元素');
       
       // 设置canvas尺寸
-      canvas.width = 640;
-      canvas.height = 480;
+      canvas.width = 480;
+      canvas.height = 640;
       cameraReady.value = true;
       cameraStatusMessage.value = '相机初始化成功';
       console.log('相机初始化成功');
@@ -444,7 +444,9 @@ onUnmounted(() => {
 .camera-container {
   flex: 3;
   margin: 3%;
-  height: 60%;
+  height: 100%;
+  border-radius: 15px;
+  overflow: hidden; /* 确保内部视频不会溢出圆角边框 */
 }
 
 .map-container {
@@ -459,9 +461,10 @@ onUnmounted(() => {
 }
 
 video {
-  width: 100%;
-  height: 100%;
+  width: 80%;
+  height: 80%;
   object-fit: cover;
+  border-radius: 15px;
 }
 
 .location-info {
@@ -478,10 +481,11 @@ video {
 .navigation-response {
   margin:3%;
   height: 15%;
-  background-color: rgba(0, 0, 0, 0.7);
-  color: white;
+  width: 80%;
+  background-color: rgb(0, 255, 170);
+  color: rgb(0, 0, 0);
   padding: 8px;
-  border-radius: 5px;
+  border-radius: 15px;
   font-size: 12px;
   max-height: 50%;
   overflow-y: auto;

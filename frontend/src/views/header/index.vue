@@ -31,8 +31,7 @@
         <div class="login-wrapper" @click="handleLoginClick">
           <div
             class="avatar-container"
-            @mouseenter="showLoginCard = true"
-            @mouseleave="showLoginCard = false">
+            @click="showLoginCard = !showLoginCard">
             <el-avatar :size="40" :icon="UserFilled" />
   
             <!-- 悬浮显示的登录卡片 -->
@@ -108,6 +107,7 @@
   import { reactive, ref, provide } from 'vue'
   import axios from 'axios'
   import {CommonService} from '@/services/CommonService.ts'
+  import { CookieUtils } from '@/utils/cookieUtils.ts'
   import { ElMessage } from 'element-plus'
   import wrongUsrpsdAudio from '@/assets/audio/login/wrong_usrpsd.mp3'
   import wrongServerAudio from '@/assets/audio/login/wrong_server.mp3'
@@ -115,7 +115,7 @@
   import successLoginAudio from '@/assets/audio/login/success_login.mp3'
   import loginReminderAudio from '@/assets/audio/login/login_reminder.mp3'
   const haveLogin=ref<string|null>(null);
-  haveLogin.value=sessionStorage.getItem('user_token')
+  haveLogin.value=CookieUtils.getCookie('user_token')
   const isCollapse = ref(true)
   const isLoggedIn = ref(false)
   const menus = ref([
@@ -132,8 +132,8 @@
    
   const handleOpen = (key: string, keyPath: string[]) => {
     console.log('key', key, 'keyPath', keyPath)
-    console.log('user_token',sessionStorage.getItem('user_token'))
-    if(key!=='1' && sessionStorage.getItem('user_token')==null){
+    console.log('user_token',CookieUtils.getCookie('user_token'))
+    if(key!=='1' && CookieUtils.getCookie('user_token')==null){
       ElMessage.error('请先登录')
       loginRemindera.play()
       router.push(menus.value[0].path)
@@ -166,7 +166,8 @@
     loginDialogVisible.value = true
   }
   const handleLogout = () => {
-    sessionStorage.removeItem('user_token')
+    // 使用CookieUtils工具类删除cookie
+    CookieUtils.deleteCookie('user_token')
     haveLogin.value=null;
     ElMessage.success('已退出登录')
   }
@@ -189,7 +190,8 @@
         ElMessage.success(response.data.message)
         isLoggedIn.value = true
         loginDialogVisible.value = false
-        haveLogin.value=sessionStorage.getItem('user_token')
+        showLoginCard.value = false
+        haveLogin.value=CookieUtils.getCookie('user_token')
         success_logina.play()
       } else {
         ElMessage.error(response.data.message || '登录失败')
