@@ -466,7 +466,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token=""):
                 llm_text_reader.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
                 yield f"data: 正在分析文字内容...\n\n"
                 completion = dashscope.MultiModalConversation.call(
-                    model="qwen-vl-max",
+                    model="qwen-vl-ocr",
                     messages=llm_text_reader,
                     temperature=0.8,
                     result_format='message',

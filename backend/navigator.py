@@ -197,12 +197,13 @@ def process_navigation_request(image_path, current_location, destination=None, h
                         ]
                     }
                 ]
+                qmodel = "qwen-vl-max"
             else:
                 # 如果没有目标地点，只分析环境
                 messages = [
                     {
                         "role": "system",
-                        "content": "你是一个导航助手，需要分析用户当前所处的环境图像，并给出适合盲人的指示。例如，当年看到正前方有障碍物时，建议用户向旁边躲避；当你看到盲人正走在马路上时，你应该建议向左或是向右回到人行道上。你的回应应当简洁、理性、高信息密度,不要擅自预测不在图片中的内容。你的输出应当是这样的：当前环境中有。。。/你正处在。。。，建议。。。"
+                        "content": "你是一个导航助手，需要分析用户当前所处的环境图像，并给出适合盲人的指示。例如，当年看到正前方有障碍物时，建议用户向旁边躲避；当你看到盲人正走在马路上时，你应该建议向左或是向右回到人行道上。你的回应应当简洁、理性、高信息密度,不要擅自预测不在图片中的内容。你的输出应当是这样的：前方有。。。"
                     },
                     {
                         "role": "user",
@@ -211,10 +212,11 @@ def process_navigation_request(image_path, current_location, destination=None, h
                         ]
                     }
                 ]
+                qmodel = "qwen-vl-max"
         
         # 调用多模态模型
             response_stream = dashscope.MultiModalConversation.call(
-                model="qwen-vl-max",
+                model=qmodel,
                 messages=messages,
                 result_format='message',
                 stream=True,

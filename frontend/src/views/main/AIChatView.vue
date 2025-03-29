@@ -200,10 +200,8 @@ const initCamera = async () => {
     if (videoElement.value) {
       videoElement.value.srcObject = mediaStream;
       
-      // 设置canvas尺寸 - 高度固定为480，宽度按比例缩放
-      canvas.height = 480;
-      // 假设原始比例是16:9，保持这个比例
-      canvas.width = Math.round(480 * (16/9));
+      canvas.width = 480;
+      canvas.height = Math.round(480 * (16/9));
     }
   } catch (error) {
     console.error('相机访问失败:', error);
