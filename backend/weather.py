@@ -1,4 +1,8 @@
 from datetime import datetime
+
+def weather_url(coordinates):
+     return f"https://api.caiyunapp.com/v2.6/QoJVR67908vzujP0/{coordinates}/realtime"
+
 def get_weather_word(temperature):
     if temperature < 5:
         return "寒冷"

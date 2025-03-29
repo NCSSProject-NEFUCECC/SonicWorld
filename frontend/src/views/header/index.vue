@@ -4,7 +4,7 @@
       class="el-menu-vertical-demo"
       :collapse="isCollapse"
       style="height: 100%">
-      <div @mouseenter="isCollapse = false" @mouseleave="isCollapse = true">
+      <div @mouseenter="isCollapse = false" @mouseleave="isCollapse = true" style="top: auto;">
         <!--logo-->
         <el-menu-item index="1" @click="handleOpen('1', [])">
           <img
@@ -12,16 +12,20 @@
             alt="Element logo"
             style="width: 45px; height: 45px; margin: 10px -10px" />
           <template #title>
-            <span style="margin-left: 10px">无障碍助手</span>
+            <span style="margin-left: 20px">希声</span>
           </template>
         </el-menu-item>
         <el-menu-item index="1" @click="handleOpen('1', [])" aria-label="开始对话">
-          <el-icon aria-hidden="true"><Search /></el-icon>
+          <el-icon><ChatDotRound /></el-icon>
           <template #title>开始对话</template>
         </el-menu-item>
-        <el-menu-item index="2" @click="handleOpen('2', [])">
+        <el-menu-item index="2" @click="handleOpen('2', [])" aria-label="领航模式">
           <el-icon><Compass /></el-icon>          
           <template #title>领航模式</template>
+        </el-menu-item>
+        <el-menu-item index="2" @click="handleOpen('3', [])" aria-label="陪伴模式">
+          <el-icon><Star /></el-icon>         
+          <template #title>陪伴模式</template>
         </el-menu-item>
       </div>
       <el-divider></el-divider>
@@ -126,6 +130,10 @@
     {
       name: '领航模式',
       path: '/navigation'
+    },
+    {
+      name: '陪伴模式',
+      path: '/accompany'
     },
   ])
   const loginRemindera = new Audio(loginReminderAudio)

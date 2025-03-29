@@ -17,6 +17,10 @@ const router = createRouter({
           path: 'navigation',
           component: () => import('@/views/main/NavigationModel.vue')
         },
+        {
+          path: 'accompany',
+          component: () => import('@/views/main/AccompanyingMode.vue' as any)
+        },
       ],
     },
 

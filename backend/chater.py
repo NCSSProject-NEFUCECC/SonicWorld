@@ -25,18 +25,16 @@ def intent_recognition(message):
     try:
         # 设置超时时间
         timeout = 30
-        messages = [
-                {'role': 'system', 'content': '你是一个意图分类器，严格按以下规则处理输入：1.分类范围[普通聊天][查找某物的位置][阅读文字][法律咨询][识别前方的情况][领航任务]；2.领航任务包含引导移动指令如"带路""扶我到"或是用户直接说打开领航模式等；3.结合全部历史消息解析指代（例：前文提到书后说"读它"→阅读文字）；4.输出严格遵循{"intent":"","msg":""}格式,不要越俎代庖擅自向用户提供建议；5.新意图/低置信度(＜80%)归普通聊天；示例：用户输入"带我去电梯"→{"intent":"领航任务","msg":"带我去电梯"}；用户输入"这是什么牌子"→{"intent":"识别前方的情况","msg":"这是什么牌子"}。务必注意！！你的输出只能是JSON格式，且不能有多余的文字,不要自作主张向用户提供建议，那是其他人的任务。你擅自将输出中添加其他东西会导致整个系统失效，务必执行好自己的任务，不要自作主张，不要越俎代庖！'}
-            ]
+        messages = []
         messages.extend(message)
         # print(messages)
-        llm_ir = dashscope.Generation.call(
-            model="qwen2.5-14b-instruct-1m",
+        llm_ir = dashscope.Application.call(
+            app_id="c299fa4ad27c4dc5909f87d79fc6d098",
+            prompt='你是一个意图分类器，严格按以下规则处理输入：1.分类范围[普通聊天][查找某物的位置][阅读文字][法律咨询][识别前方的情况][领航任务][陪伴模式]；2.领航任务包含引导移动指令如"带路""扶我到"或是用户直接说打开领航模式等；3.结合全部历史消息解析指代（例：前文提到书后说"读它"→阅读文字）；4.输出严格遵循{"intent":"","msg":""}格式,不要越俎代庖擅自向用户提供建议；5.新意图/低置信度(＜80%)归普通聊天；。务必注意！！你的输出只能是JSON格式，且不能有多余的文字,不要自作主张向用户提供建议，那是其他人的任务。你擅自将输出中添加其他东西会导致整个系统失效，务必执行好自己的任务，你只是一个意图识别器，不要自作主张，不要越俎代庖！',
             messages=messages,
-            result_format='message'
         )
         # print(llm_ir)
-        intent = llm_ir.output.choices[0].message.content
+        intent = llm_ir.output.text
         # print(intent)
         intent = json.loads(intent)
         intent = intent.get('intent')

@@ -16,6 +16,29 @@ TTS_VOICE = "longxiaochun"  # 可根据需要调整
 def get_timestamp():
     now = datetime.now()
     return now.strftime("[%Y-%m-%d %H:%M:%S.%f]")
+
+def get_direction(heading):
+    if 0 <= heading <23:
+        return "北"
+    elif 23 <= heading <68:
+        return "东北"
+    elif 68 <= heading <113:
+        return "东"
+    elif 113 <= heading <158:
+        return "东南"
+    elif 158 <= heading <203:
+        return "南"
+    elif 203 <= heading <248:
+        return "西南"
+    elif 248 <= heading <293:
+        return "西"
+    elif 293 <= heading <338:
+        return "西北"
+    elif 338 <= heading <360:
+        return "北"
+    else:
+        return "未知"
+
 class StreamingAudioCallback(ResultCallback):
     def __init__(self):
         self.audio_buffer = bytearray()
@@ -193,7 +216,7 @@ def process_navigation_request(image_path, current_location, destination=None, h
                         "role": "user",
                         "content": [
                             {"image": image_path},
-                            {"text": f"导航建议：{route_info},用户朝向{heading}"}
+                            {"text": f"导航建议：{route_info},用户朝向{get_direction(heading)},{heading},度"}
                         ]
                     }
                 ]

@@ -238,7 +238,7 @@ const getWeatherInfo = async () => {
     if (isWeatherRequested.value) return
     isWeatherRequested.value = true
     // 获取地理位置
-    const position = await new Promise((resolve, reject) => {
+    const position: GeolocationPosition = await new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true,
         timeout: 5000,
@@ -316,6 +316,14 @@ const sendMessage = async () => {
     
     const imageData = await captureAndSendImage('默认意图')
     
+    const position: GeolocationPosition = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+      })
+    })
+
     const response = await fetch('http://127.0.0.1:5000/api/chat', {
       method: 'POST',
       headers: {
@@ -324,7 +332,11 @@ const sendMessage = async () => {
       body: JSON.stringify({
         messages: chatMessages.value,
         image: imageData,
-        user_token: sessionStorage.getItem('user_token')
+        user_token: CookieUtils.getCookie('user_token'),
+        // location: {
+        //   longitude: position.coords.longitude,
+        //   latitude: position.coords.latitude
+        // }
       })
     })
 
@@ -358,6 +370,11 @@ const sendMessage = async () => {
               router.push({
                 path: '/navigation',
                 query: { lastInput: currentUserInput }
+              })
+            }
+            if (receivedText === '陪伴模式') {
+              router.push({
+                path: '/accompany',
               })
             }
           }
