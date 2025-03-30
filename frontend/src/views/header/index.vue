@@ -23,7 +23,7 @@
           <el-icon><Compass /></el-icon>          
           <template #title>领航模式</template>
         </el-menu-item>
-        <el-menu-item index="2" @click="handleOpen('3', [])" aria-label="陪伴模式">
+        <el-menu-item index="3" @click="handleOpen('3', [])" aria-label="陪伴模式">
           <el-icon><Star /></el-icon>         
           <template #title>陪伴模式</template>
         </el-menu-item>

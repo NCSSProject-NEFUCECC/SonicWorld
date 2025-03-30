@@ -1,11 +1,28 @@
 <template>
-  <div id="root"></div>
-</template>
-<script src="https://g.alicdn.com/apsara-media-aui/amaui-web-aicall/1.6.2/aicall-ui.js">
-  new ARTCAICallUI({
-    userId: '123',                          // 进入rtc的用户id，建议使用当前登录用户的UserId
-    root: document.getElementById('root'),  // 页面渲染到的节点，画面完整填充整个区域
-    shareToken: 'eyJSZXF1ZXN0SWQiOiJCRUMxMjk5Ni01QTBBLTU4MkItQjRGNy00NEFGMjdDNEIzRkIiLCJXb3JrZmxvd1R5cGUiOiJWb2ljZUNoYXQiLCJUZW1wb3JhcnlBSUFnZW50SWQiOiJlOGVhODdjNjEwNzY0MzAwYjg3MGYyYTRiM2JjNDIxYSIsIkV4cGlyZVRpbWUiOiIyMDI1LTAzLTMwIDEwOjI2OjUxIiwiTmFtZSI6Ilhsc3JVa0k4IiwiUmVnaW9uIjoiY24tYmVpamluZyJ9',                     // 填入分享ID
-  }).render();
-</script>
+    <div id="root" ref="refRoot">111</div>
+  </template>
   
+  <script lang="ts" setup>
+  import { onMounted, ref } from 'vue';
+  
+  const refRoot = ref<HTMLElement | null>(null);
+  onMounted(() => {
+    const script = document.createElement('script');
+    script.src = 'https://g.alicdn.com/apsara-media-aui/amaui-web-aicall/1.6.2/aicall-ui.js';
+    console.log('1');
+    script.onload = () => {
+        console.log('2');
+      if (refRoot.value) {
+        // @ts-ignore
+        console.log('3');
+        // @ts-ignore 忽略 TypeScript 类型检查，因为 ARTCAICallUI 是动态加载的
+        new (window as any).ARTCAICallUI({
+          userId: '123',
+          root: refRoot.value,
+          shareToken: 'eyJSZXF1ZXN0SWQiOiIyQzlGNkE2QS04NzIxLTU5MDUtODEwQi00NDdBMzI5QjAzRTciLCJXb3JrZmxvd1R5cGUiOiJWb2ljZUNoYXQiLCJUZW1wb3JhcnlBSUFnZW50SWQiOiJhMTA5M2NmNzU0NmY0MzdlODczZTQxOTMyZDY4YjVkNSIsIkV4cGlyZVRpbWUiOiIyMDI1LTA0LTAxIDE0OjM1OjUyIiwiTmFtZSI6IndmZlZOUVJpIiwiUmVnaW9uIjoiY24tYmVpamluZyJ9',
+        }).render();
+      }
+    };
+    document.head.appendChild(script);
+  });
+  </script>    

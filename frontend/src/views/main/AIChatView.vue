@@ -333,10 +333,10 @@ const sendMessage = async () => {
         messages: chatMessages.value,
         image: imageData,
         user_token: CookieUtils.getCookie('user_token'),
-        // location: {
-        //   longitude: position.coords.longitude,
-        //   latitude: position.coords.latitude
-        // }
+   
+          longitude: position.coords.longitude,
+          latitude: position.coords.latitude
+        
       })
     })
 
