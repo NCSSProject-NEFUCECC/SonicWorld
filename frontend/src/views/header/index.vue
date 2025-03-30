@@ -119,7 +119,7 @@
   import successLoginAudio from '@/assets/audio/login/success_login.mp3'
   import loginReminderAudio from '@/assets/audio/login/login_reminder.mp3'
   const haveLogin=ref<string|null>(null);
-  haveLogin.value=CookieUtils.getCookie('user_token')
+  haveLogin.value=localStorage.getItem('user_token')
   const isCollapse = ref(true)
   const isLoggedIn = ref(false)
   const menus = ref([
@@ -141,7 +141,7 @@
   const handleOpen = (key: string, keyPath: string[]) => {
     console.log('key', key, 'keyPath', keyPath)
     console.log('user_token',CookieUtils.getCookie('user_token'))
-    if(key!=='1' && CookieUtils.getCookie('user_token')==null){
+    if(key!=='1' && localStorage.getItem('user_token')==null){
       ElMessage.error('请先登录')
       loginRemindera.play()
       router.push(menus.value[0].path)
@@ -175,7 +175,7 @@
   }
   const handleLogout = () => {
     // 使用CookieUtils工具类删除cookie
-    CookieUtils.deleteCookie('user_token')
+    localStorage.removeItem('user_token')
     haveLogin.value=null;
     ElMessage.success('已退出登录')
   }
@@ -199,7 +199,7 @@
         isLoggedIn.value = true
         loginDialogVisible.value = false
         showLoginCard.value = false
-        haveLogin.value=CookieUtils.getCookie('user_token')
+        haveLogin.value=localStorage.getItem('user_token')
         success_logina.play()
       } else {
         ElMessage.error(response.data.message || '登录失败')

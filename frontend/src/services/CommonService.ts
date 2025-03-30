@@ -11,7 +11,7 @@ export class CommonService {
             const user_token = response.data.data.username
             // 使用CookieUtils工具类设置cookie，过期时间为15天
             CookieUtils.setCookie('user_token', user_token)
-            sessionStorage.setItem('user_token', user_token)
+            localStorage.setItem('user_token', user_token)
           } 
           return response
       }

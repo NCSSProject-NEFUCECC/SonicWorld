@@ -203,8 +203,8 @@ const initCamera = async () => {
       console.log('视频流已设置到video元素');
       
       // 设置canvas尺寸
-      canvas.width = 480;
-      canvas.height = 640;
+      canvas.width = 540;
+      canvas.height = 720;
       cameraReady.value = true;
       cameraStatusMessage.value = '相机初始化成功';
       console.log('相机初始化成功');
@@ -299,7 +299,7 @@ const captureAndSendFrame = async () => {
           image: imageData,
           location: locationInfo.value,
           heading: compassHeading.value,
-          user_token: sessionStorage.getItem('user_token')
+          user_token: localStorage.getItem('user_token')
         })
       })
 

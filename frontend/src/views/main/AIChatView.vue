@@ -307,7 +307,7 @@ onUnmounted(() => {
 const sendMessage = async () => {
   if (!userInput.value.trim()) return
   const currentUserInput = userInput.value
-  const user_token = ref(CookieUtils.getCookie('user_token') || '')
+  const user_token = ref(localStorage.getItem('user_token') || '')
   
   chatMessages.value.push({role:'user', content: currentUserInput})
   try {
@@ -335,7 +335,7 @@ const sendMessage = async () => {
         image: imageData,
         longitude: position.coords.longitude,
         latitude: position.coords.latitude,
-        user_token: CookieUtils.getCookie('user_token'),
+        user_token: localStorage.getItem('user_token'),
       })
     })
     if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`)
