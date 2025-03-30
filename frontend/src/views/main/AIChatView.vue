@@ -247,7 +247,7 @@ const getWeatherInfo = async () => {
     })
 
     // 发送位置信息到后端获取天气
-    const response = await fetch('http://127.0.0.1:5000/api/weather', {
+    const response = await fetch('http://101.42.16.55:5000/api/weather', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -325,7 +325,7 @@ const sendMessage = async () => {
     })
     console.log('经度:', position.coords.longitude)
     console.log('纬度:', position.coords.latitude)
-    const response = await fetch('http://127.0.0.1:5000/api/chat', {
+    const response = await fetch('http://101.42.16.55:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

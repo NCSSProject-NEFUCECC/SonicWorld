@@ -3,7 +3,7 @@ import { CookieUtils } from '../utils/cookieUtils'
 
 export class CommonService {
     static loginService = async (username:string,password:string) => {
-        const response = await axios.post('http://127.0.0.1:5000/api/login', {
+        const response = await axios.post('http://101.42.16.55:5000/api/login', {
             username: username,
             password: password
           })
