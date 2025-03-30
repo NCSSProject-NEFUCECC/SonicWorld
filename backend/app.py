@@ -7,14 +7,14 @@ import json
 import base64
 import time
 import dashscope
-from navigator import ana_msg
+from navigator import ana_msg,get_region
 from chater import convert_to_multimodal, intent_recognition
 import chater
 from datetime import datetime
 from database import db, User
 from dashscope.audio.tts_v2 import SpeechSynthesizer, AudioFormat, ResultCallback
 from dashscope import Application
-from weather import get_time_of_day,get_weather_word,weather_map,weather_url
+from weather import get_time_of_day,weather_map,weather_url
 import requests
 
 app = Flask(__name__)
@@ -85,8 +85,8 @@ def get_weather():
             temperature = round(weather['temperature'])  # 温度
             weather_desc = weather_map.get(weather['skycon'], '未知天气')  # 天气描述
             humidity = round(weather['humidity'] * 100)  # 湿度
-
-            text = f"{get_time_of_day()}。今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%"
+            comfort = weather["life_index"]["comfort"]["desc"]
+            text = f"{get_time_of_day()}。今天{comfort}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%"
             callback = StreamingAudioCallback()
             synthesizer = SpeechSynthesizer(
                 model=TTS_MODEL,
@@ -101,7 +101,7 @@ def get_weather():
             return jsonify({
                 'status': 'success',
                 'data': {
-                    'message': f"{get_time_of_day()}。今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%",
+                    'message': text,
                     'audio': audio_data.hex()
                 }
             }), 200
@@ -126,11 +126,12 @@ def chat():
         user_messages = data.get('messages', '')
         user_message = user_messages[-1].get('content', '')
         try:
-            user_location = data.get('location', {})
+            user_location = (data.get('longitude', 0), data.get('latitude', 0))
             if user_location:
-                user_location = (float(user_location.get('longitude')), float(user_location.get('latitude')))
+                pass
             else:
                 user_location = None
+                print('位置信息不完整或格式错误')
         except Exception as e:
             print("获取位置信息错误:", str(e))
             user_location = None
@@ -261,7 +262,10 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
     base64_image = encode_image(image_path)
 
     if user_location:
-        response = requests.get(weather_url(user_location))
+        region_info = get_region(user_location)
+        print("-"*10,region_info,"-"*10)
+        wuser_location = str(user_location[0]) + "," + str(user_location[1])
+        response = requests.get(weather_url(wuser_location))
         data = response.json()
         
         if data['status'] == 'ok':
@@ -271,8 +275,8 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
             temperature = round(weather['temperature'])  # 温度
             weather_desc = weather_map.get(weather['skycon'], '未知天气')  # 天气描述
             humidity = round(weather['humidity'] * 100)  # 湿度
-
-            weather_info = f"{get_time_of_day()}。今天{get_weather_word(temperature)}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%"
+            comfort = weather["life_index"]["comfort"]["desc"]
+            weather_info = f"{region_info}今天{comfort}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%"
 
     else:
         weather_info = "None"
@@ -314,10 +318,11 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
         if intent == "普通聊天":
             try:
                 print("已进入普通聊天部分")
+                print("weather_info:",weather_info)
                 # llm_basechat.extend(history_msg)
                 completion = Application.call(
                     app_id='94599ca0fe134dfcad102e05b17f5e19',
-                    prompt=f'这里是一些可能有用的信息，供你参考，但你不能主动提及。天气信息:{weather_info}，时间信息:{time_info}，只有当用户问你这些信息时，你才应该告诉用户。',
+                    prompt=f'这里是一些可能有用的信息，供你参考，但你不能主动提及。天气信息与位置信息:{weather_info}，时间信息:{time_info}，只有当用户问你这些信息时，你才应该告诉用户。',
                     messages=history_msg,
                     stream=True,
                     # 增量式流式输出
@@ -579,9 +584,48 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                     # print("当前字典：",user_messages_dic)
                     yield f"data: 领航模式\n\n"
                 else:
+                    synthesizer.streaming_call("未登录，无法使用领航模式")
+                    time.sleep(0.1)  # 给合成器处理时间
+                    
+                    # 发送音频数据
+                    audio_data = bytes(callback.audio_buffer)
+                    if audio_data:
+                        yield f"data:audio,{audio_data.hex()}\n\n"
+                        callback.audio_buffer.clear()
+                    synthesizer.streaming_complete()
+                    audio_data = bytes(callback.audio_buffer)
+                    if audio_data:
+                        yield f"data:audio,{audio_data.hex()}\n\n"
+                        callback.audio_buffer.clear()
                     yield f"data: 未登录，无法使用领航模式\n\n"
+                    yield f"data: [完成]\n\n"
             except Exception as e:
                 print(f"领航任务API调用错误: {str(e)}")
+                if "Connection" in str(e):
+                    yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+                else:
+                    yield f"data: 抱歉，无法处理领航任务请求。\n\n"
+        elif intent == "陪伴模式":
+            try: 
+                if user_token !="" and user_token != None and user_token!="None": 
+                    yield f"data: 陪伴模式\n\n"
+                else:
+                    synthesizer.streaming_call("未登录，无法使用陪伴模式")
+                    time.sleep(0.1)  # 给合成器处理时间
+                    
+                    # 发送音频数据
+                    audio_data = bytes(callback.audio_buffer)
+                    if audio_data:
+                        yield f"data:audio,{audio_data.hex()}\n\n"
+                        callback.audio_buffer.clear()
+                    synthesizer.streaming_complete()
+                    audio_data = bytes(callback.audio_buffer)
+                    if audio_data:
+                        yield f"data:audio,{audio_data.hex()}\n\n"
+                        callback.audio_buffer.clear()
+                    yield f"data: 未登录，无法使用陪伴模式\n\n"
+            except Exception as e:
+                print(f"陪伴模式调用错误: {str(e)}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:

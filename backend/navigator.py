@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-  
 import requests
 import dashscope
 import json
@@ -13,6 +14,7 @@ import time
 
 TTS_MODEL = "cosyvoice-v1"
 TTS_VOICE = "longxiaochun"  # 可根据需要调整
+gaode_key = "067edeed4e3b4cc6331c327cdb2b4f45"
 def get_timestamp():
     now = datetime.now()
     return now.strftime("[%Y-%m-%d %H:%M:%S.%f]")
@@ -81,7 +83,7 @@ def get_location_info(address):
      """向高德地图API发送请求获取地理编码信息"""
      base_url = "https://restapi.amap.com/v3/geocode/geo"
      params = {
-         "key": "720655fed978632fd548b69f8808bc72",
+         "key": gaode_key,
          "address": address,
          "output": "JSON"
      }
@@ -96,6 +98,28 @@ def get_location_info(address):
          print(f"请求失败: {e}")
          return None
 
+def get_region(location):
+    # print("get_region的参数是：",location)
+    """从高德地图API获取行政区名称"""
+    base_url = "https://restapi.amap.com/v3/geocode/regeo"
+    params = {
+        "key": gaode_key,
+        "location": f"{location[0]},{location[1]}",
+        "extensions": "base",
+        "output": "JSON"
+    }
+
+    try:
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()
+        res = response.json()
+        if res.get("status") == "1":
+            return res["regeocode"]["addressComponent"]["district"]
+        return res.get('info')
+    except requests.RequestException as e:
+        print(f"获取行政区信息失败: {e}")
+        return f"获取行政区信息失败: {e}"
+
 def get_route_info(start, end):
     print("get_route_info的参数是：",start[0],start[1],end[0],end[1])
     # https://restapi.amap.com/v5/direction/walking?isindoor=0&origin={start[0]},{start[1]}&destination={end[0]},{end[1]}&key=<用户的key>
@@ -104,7 +128,7 @@ def get_route_info(start, end):
         "isindoor": 0,
         "origin": f"{start[0]},{start[1]}",
         "destination": f"{end[0]},{end[1]}",
-        "key": "720655fed978632fd548b69f8808bc72"
+        "key": gaode_key
     }
     try:
         response = requests.get(base_url, params=params)
@@ -149,7 +173,7 @@ def ana_msg(message):
 def gpslal2gaodelal(location):  #将gps的经纬度转换为高德的经纬度
     base_url = "https://restapi.amap.com/v3/assistant/coordinate/convert"
     params = {
-        "key": "720655fed978632fd548b69f8808bc72",
+        "key": gaode_key,
         "locations": f"{location[0]},{location[1]}",
         "coordsys": "gps",
         "output": "json"
@@ -210,7 +234,7 @@ def process_navigation_request(image_path, current_location, destination=None, h
                 messages = [
                     {
                         "role": "system",
-                        "content": "你是一个导航助手，分析图像中看到的环境，根据导航建议和路况，并给出适合盲人的导航指示。你的回应应当简洁、理性、高信息密度。不要擅自预测不在图片中的内容。你需要根据用户的朝向和得到的导航信息的方向建议用户的行动，例如导航信息表示应该朝北走，用户的朝向显示为270度，你就应该告诉用户应该先右转；如果导航表示应该朝北走，用户朝向显示为20度，说明用户的朝向大致是正确的，你就应当根据图片上显示的道路分析建议用户靠哪个方向走。如果接受到的朝向为None，就忽略朝向信息。你的输出应当是这样的：当前环境中有。。。/你正处在。。。，根据导航建议。。。"
+                        "content": "你是一个导航助手，分析图像中看到的环境，根据导航建议和路况，并给出适合盲人的导航指示。你的回应应当简洁、理性、高信息密度。不要擅自预测不在图片中的内容。你需要根据用户的朝向和得到的导航信息的方向建议用户的行动，例如导航信息表示应该朝北走，用户的朝向显示为270度，你就应该告诉用户应该先右转；如果导航表示应该朝北走，用户朝向显示为20度，说明用户的朝向大致是正确的，你就应当根据图片上显示的道路分析建议用户靠哪个方向走。如果接受到的朝向为None，就忽略朝向信息。你的输出应当是这样的：当前环境中有。。。/你正处在。。。，根据导航建议。。。",
                     },
                     {
                         "role": "user",

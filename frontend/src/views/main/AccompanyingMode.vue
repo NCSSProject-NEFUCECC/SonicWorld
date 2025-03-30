@@ -4,6 +4,7 @@
   
   <script lang="ts" setup>
   import { onMounted, ref } from 'vue';
+  import { CookieUtils } from '@/utils/cookieUtils';
   
   const refRoot = ref<HTMLElement | null>(null);
   onMounted(() => {
@@ -17,12 +18,12 @@
         console.log('3');
         // @ts-ignore 忽略 TypeScript 类型检查，因为 ARTCAICallUI 是动态加载的
         new (window as any).ARTCAICallUI({
-          userId: '123',
+          userId: CookieUtils.getCookie('user_token') || '',
           root: refRoot.value,
-          shareToken: 'eyJSZXF1ZXN0SWQiOiIyQzlGNkE2QS04NzIxLTU5MDUtODEwQi00NDdBMzI5QjAzRTciLCJXb3JrZmxvd1R5cGUiOiJWb2ljZUNoYXQiLCJUZW1wb3JhcnlBSUFnZW50SWQiOiJhMTA5M2NmNzU0NmY0MzdlODczZTQxOTMyZDY4YjVkNSIsIkV4cGlyZVRpbWUiOiIyMDI1LTA0LTAxIDE0OjM1OjUyIiwiTmFtZSI6IndmZlZOUVJpIiwiUmVnaW9uIjoiY24tYmVpamluZyJ9',
+          shareToken: 'eyJSZXF1ZXN0SWQiOiI0RjVCN0NENy0zNDc1LTUwRDEtODZFRS02OTU3RUU2N0U3QzciLCJXb3JrZmxvd1R5cGUiOiJWb2ljZUNoYXQiLCJUZW1wb3JhcnlBSUFnZW50SWQiOiI1MmYzNzdmOGU1NzM0ZDU2OTg1NWU1ZDZhYTIxNDBkYyIsIkV4cGlyZVRpbWUiOiIyMDI1LTA0LTAyIDA0OjA2OjIxIiwiTmFtZSI6IklpQmM2enMyIiwiUmVnaW9uIjoiY24tYmVpamluZyJ9',
         }).render();
       }
     };
     document.head.appendChild(script);
   });
-  </script>    
+  </script>

@@ -323,7 +323,8 @@ const sendMessage = async () => {
         maximumAge: 0
       })
     })
-
+    console.log('经度:', position.coords.longitude)
+    console.log('纬度:', position.coords.latitude)
     const response = await fetch('http://127.0.0.1:5000/api/chat', {
       method: 'POST',
       headers: {
@@ -332,14 +333,11 @@ const sendMessage = async () => {
       body: JSON.stringify({
         messages: chatMessages.value,
         image: imageData,
+        longitude: position.coords.longitude,
+        latitude: position.coords.latitude,
         user_token: CookieUtils.getCookie('user_token'),
-   
-          longitude: position.coords.longitude,
-          latitude: position.coords.latitude
-        
       })
     })
-
     if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`)
     if (!response.body) throw new Error('无法获取响应流')
 

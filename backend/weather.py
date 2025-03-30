@@ -1,23 +1,9 @@
 from datetime import datetime
 
 def weather_url(coordinates):
-     return f"https://api.caiyunapp.com/v2.6/QoJVR67908vzujP0/{coordinates}/realtime"
-
-def get_weather_word(temperature):
-    if temperature < 5:
-        return "寒冷"
-    elif temperature < 12:
-        return "冷"
-    elif temperature < 18:
-        return "凉爽"  
-    elif temperature < 25:
-        return "舒适"
-    elif temperature < 30:
-        return "温暖"
-    elif temperature < 35:
-        return "热"
-    else:
-        return "炎热"
+    print(f"https://api.caiyunapp.com/v2.6/QoJVR67908vzujP0/{coordinates}/realtime")
+    return f"https://api.caiyunapp.com/v2.6/QoJVR67908vzujP0/{coordinates}/realtime"
+    # return 0
 
 def get_time_of_day():
     current_time = datetime.now().time()
