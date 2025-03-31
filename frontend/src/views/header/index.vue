@@ -24,7 +24,7 @@
           <template #title>领航模式</template>
         </el-menu-item>
         <el-menu-item index="3" @click="handleOpen('3', [])" aria-label="陪伴模式">
-          <el-icon><Star /></el-icon>         
+          <el-icon><Phone /></el-icon>        
           <template #title>陪伴模式</template>
         </el-menu-item>
       </div>
@@ -35,7 +35,10 @@
         <div class="login-wrapper" @click="handleLoginClick">
           <div
             class="avatar-container"
-            @click="showLoginCard = !showLoginCard">
+            @click="showLoginCard = !showLoginCard"
+            role="button"
+            aria-label="用户登录按钮"
+            tabindex="0">
             <el-avatar :size="40" :icon="UserFilled" />
   
             <!-- 悬浮显示的登录卡片 -->
@@ -49,8 +52,8 @@
                 </div>
               </div>
               <div class="login-menu">
-                <div class="menu-item" role="menuitem" aria-label="个人中心">
-                  <span>个人中心</span>
+                <div class="menu-item" role="menuitem" aria-label="点此输入陪伴模式令牌" @click="handleTokenInput">
+                  <span>陪伴模式令牌</span>
                 </div>
                 <div class="menu-item" @click="handleLogout">
                   <span>退出登录</span>
@@ -107,6 +110,7 @@
     User,
     UserFilled
   } from '@element-plus/icons-vue'
+  import { ElMessageBox } from 'element-plus'
   import type { FormInstance, FormRules } from 'element-plus'
   import { reactive, ref, provide } from 'vue'
   import axios from 'axios'
@@ -220,6 +224,18 @@
   }
   
   const showLoginCard = ref(false)
+  
+  const handleTokenInput = () => {
+    ElMessageBox.prompt('请输入陪伴模式令牌', '令牌输入', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    }).then(({ value }) => {
+      localStorage.setItem('accompany_token', value)
+      ElMessage.success('令牌已保存')
+    }).catch(() => {
+      ElMessage.info('已取消输入')
+    })
+  }
   </script>
   
   <style scoped>

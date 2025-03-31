@@ -1,7 +1,7 @@
 from datetime import datetime
 
 def weather_url(coordinates):
-    print(f"https://api.caiyunapp.com/v2.6/QoJVR67908vzujP0/{coordinates}/realtime")
+    # print(f"https://api.caiyunapp.com/v2.6/QoJVR67908vzujP0/{coordinates}/realtime")
     return f"https://api.caiyunapp.com/v2.6/QoJVR67908vzujP0/{coordinates}/realtime"
     # return 0
 

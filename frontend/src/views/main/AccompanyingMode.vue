@@ -1,9 +1,10 @@
 <template>
-    <div id="root" ref="refRoot">111</div>
+    <div id="root" ref="refRoot"></div>
   </template>
   
   <script lang="ts" setup>
   import { onMounted, ref } from 'vue';
+  import { ElMessageBox } from 'element-plus';
   
   const refRoot = ref<HTMLElement | null>(null);
   onMounted(() => {
@@ -19,7 +20,10 @@
         new (window as any).ARTCAICallUI({
           userId: localStorage.getItem('user_token') || '',
           root: refRoot.value,
-          shareToken: 'eyJSZXF1ZXN0SWQiOiI0RjVCN0NENy0zNDc1LTUwRDEtODZFRS02OTU3RUU2N0U3QzciLCJXb3JrZmxvd1R5cGUiOiJWb2ljZUNoYXQiLCJUZW1wb3JhcnlBSUFnZW50SWQiOiI1MmYzNzdmOGU1NzM0ZDU2OTg1NWU1ZDZhYTIxNDBkYyIsIkV4cGlyZVRpbWUiOiIyMDI1LTA0LTAyIDA0OjA2OjIxIiwiTmFtZSI6IklpQmM2enMyIiwiUmVnaW9uIjoiY24tYmVpamluZyJ9',
+          shareToken: localStorage.getItem('accompany_token') || (() => {
+            ElMessageBox.alert('请先输入陪伴模式令牌', '提示');
+            return '';
+          })(),
         }).render();
       }
     };
