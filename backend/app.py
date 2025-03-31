@@ -369,7 +369,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                 # 提取当前用户输入的文本部分并添加到数组中
                 user_message = history_msg[-1].get('content', '')
                 llm_visual_finder.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
-                # yield f"data: 正在分析图像...\n\n"
+                yield f"data: 查找某物位置：\n\n"
                 completion = dashscope.MultiModalConversation.call(
                     model="qwen-vl-max",
                     messages=llm_visual_finder,
@@ -424,7 +424,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                 # 提取当前用户输入的文本部分并添加到数组中
                 user_message = history_msg[-1].get('content', '')
                 llm_visual_recoder.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
-                yield f"data: 正在分析图像...\n\n"
+                yield f"data: 识别前方情况：\n\n"
                 completion = dashscope.MultiModalConversation.call(
                     model="qwen-vl-max",
                     messages=llm_visual_recoder,
@@ -526,7 +526,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                 
         elif intent == "法律咨询":
             try:
-                yield f"data: 正在处理法律咨询...\n\n"
+                yield f"data: 法律服务：\n\n"
                 llm_legal_consultant.extend(history_msg)
                 completion = dashscope.Generation.call(
                     model="farui-plus",

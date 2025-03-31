@@ -449,22 +449,13 @@ onUnmounted(() => {
   overflow: hidden; /* 确保内部视频不会溢出圆角边框 */
 }
 
-.map-container {
-  flex: 2;
-  height: 40%;
-  margin-top: 10px;
-}
-
-.map-placeholder {
-  color: #666;
-  font-size: 14px;
-}
-
 video {
   width: 80%;
-  height: 80%;
+  height: 100%;
   object-fit: cover;
   border-radius: 15px;
+  margin: auto;
+  display: block;
 }
 
 .location-info {
@@ -479,16 +470,18 @@ video {
 }
 
 .navigation-response {
-  margin:3%;
   height: 15%;
   width: 80%;
-  background-color: rgb(0, 255, 170);
+  background-color: rgb(186, 255, 232);
   color: rgb(0, 0, 0);
-  padding: 8px;
   border-radius: 15px;
   font-size: 12px;
   max-height: 50%;
   overflow-y: auto;
+  margin: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .status-message {

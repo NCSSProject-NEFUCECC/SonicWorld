@@ -42,20 +42,20 @@
             <el-avatar :size="40" :icon="UserFilled" />
   
             <!-- 悬浮显示的登录卡片 -->
-            <div class="login-card" v-show="showLoginCard">
+            <div class="login-card" v-show="showLoginCard" role="menu" aria-label="用户登录菜单">
               <div class="login-header">
-                <el-avatar :size="40" :icon="UserFilled" class="login-avatar" />
+                <el-avatar :size="40" :icon="UserFilled" class="login-avatar" role="menuitem" aria-label="用户头像" tabindex="0" />
                 <!--未登录显示登入，已经登入显示haveLogin-->
-                <div class="login-title">
-                  <span v-if="haveLogin==null">点此登录</span>
-                  <span v-else>{{haveLogin}}</span>
+                <div class="login-title" role="menuitem" tabindex="0">
+                  <span v-if="haveLogin==null" aria-label="点此登录">点此登录</span>
+                  <span v-else aria-label="当前用户">{{haveLogin}}</span>
                 </div>
               </div>
               <div class="login-menu">
-                <div class="menu-item" role="menuitem" aria-label="点此输入陪伴模式令牌" @click="handleTokenInput">
+                <div class="menu-item" role="menuitem" aria-label="点此输入陪伴模式令牌" @click="handleTokenInput" tabindex="0">
                   <span>陪伴模式令牌</span>
                 </div>
-                <div class="menu-item" @click="handleLogout">
+                <div class="menu-item" role="menuitem" aria-label="退出登录" @click="handleLogout" tabindex="0">
                   <span>退出登录</span>
                 </div> 
               </div>
@@ -112,7 +112,7 @@
   } from '@element-plus/icons-vue'
   import { ElMessageBox } from 'element-plus'
   import type { FormInstance, FormRules } from 'element-plus'
-  import { reactive, ref, provide } from 'vue'
+  import { reactive, ref, provide, watch } from 'vue'
   import axios from 'axios'
   import {CommonService} from '@/services/CommonService.ts'
   import { CookieUtils } from '@/utils/cookieUtils.ts'
@@ -122,6 +122,9 @@
   import otherWrongAudio from '@/assets/audio/login/other_wrong.mp3'
   import successLoginAudio from '@/assets/audio/login/success_login.mp3'
   import loginReminderAudio from '@/assets/audio/login/login_reminder.mp3'
+  import openCardAudio from '@/assets/audio/login/open_login_card.mp3'
+  import closeCardAudio from '@/assets/audio/login/close_login_card.mp3'
+  import logOutAudio from '@/assets/audio/login/logout.mp3'
   const haveLogin=ref<string|null>(null);
   haveLogin.value=localStorage.getItem('user_token')
   const isCollapse = ref(true)
@@ -182,6 +185,8 @@
     localStorage.removeItem('user_token')
     haveLogin.value=null;
     ElMessage.success('已退出登录')
+    const audio = new Audio(logOutAudio)
+    audio.play()
   }
 
   const wrong_usrpsda = new Audio(wrongUsrpsdAudio)
@@ -224,6 +229,16 @@
   }
   
   const showLoginCard = ref(false)
+  
+  watch(showLoginCard, (newVal) => {
+    if (newVal) {
+      const audio = new Audio(openCardAudio)
+      audio.play()
+    } else {
+      const audio = new Audio(closeCardAudio)
+      audio.play()
+    }
+  })
   
   const handleTokenInput = () => {
     ElMessageBox.prompt('请输入陪伴模式令牌', '令牌输入', {
