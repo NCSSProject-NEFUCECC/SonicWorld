@@ -5,7 +5,7 @@
   <script lang="ts" setup>
   import { onMounted, ref } from 'vue';
   import { ElMessageBox } from 'element-plus';
-  import accompanyInvalidationAudio from '@/assets/audio/accompany/accompany_invalidation.mp3';
+  import accompanyInvalidationAudio from '@/assets/audio/general/accompany_invalidation.mp3';
   
   const refRoot = ref<HTMLElement | null>(null);
   onMounted(() => {

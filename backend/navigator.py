@@ -234,7 +234,7 @@ def process_navigation_request(image_path, current_location, destination=None, h
                 messages = [
                     {
                         "role": "system",
-                        "content": "你是一个导航助手，分析图像中看到的环境，根据导航建议和路况，并给出适合盲人的导航指示。你的回应应当简洁、理性、高信息密度。不要擅自预测不在图片中的内容。你需要根据用户的朝向和得到的导航信息的方向建议用户的行动，例如导航信息表示应该朝北走，用户的朝向显示为270度，你就应该告诉用户应该先右转；如果导航表示应该朝北走，用户朝向显示为20度，说明用户的朝向大致是正确的，你就应当根据图片上显示的道路分析建议用户靠哪个方向走。如果接受到的朝向为None，就忽略朝向信息。你的输出应当是这样的：当前环境中有。。。/你正处在。。。，根据导航建议。。。",
+                        "content": chater.navigator_with_destination,
                     },
                     {
                         "role": "user",
@@ -244,7 +244,7 @@ def process_navigation_request(image_path, current_location, destination=None, h
                         ]
                     }
                 ]
-                qmodel = "qwen-vl-max"
+                qmodel = "qwen-vl-max-latest"
             else:
                 # 如果没有目标地点，只分析环境
                 messages = [
@@ -259,7 +259,7 @@ def process_navigation_request(image_path, current_location, destination=None, h
                         ]
                     }
                 ]
-                qmodel = "qwen-vl-max"
+                qmodel = "qwen-vl-max-latest"
         
         # 调用多模态模型
             response_stream = dashscope.MultiModalConversation.call(
