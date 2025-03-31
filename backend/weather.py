@@ -34,6 +34,7 @@ weather_map = {
     'CLEAR_NIGHT': '晴夜',
     'PARTLY_CLOUDY_DAY': '多云',
     'PARTLY_CLOUDY_NIGHT': '多云',
+    'LIGHT_HAZE': '多云',
     'CLOUDY': '阴天',
     'LIGHT_RAIN': '小雨',
     'MODERATE_RAIN': '中雨',
@@ -45,5 +46,9 @@ weather_map = {
     'STORM_SNOW': '暴雪',
     'FOG': '雾',
     'DUST': '浮尘',
+    'LIGHT_HAZE': '轻度雾霾',
     'HEAVY_HAZE': '霾',
+    'MODERATE_HAZE': '中度雾霾',
+    'SAND': '沙尘',
+    'WIND': '大风',
 }
