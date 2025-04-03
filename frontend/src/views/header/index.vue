@@ -8,9 +8,9 @@
         <!--logo-->
         <el-menu-item index="1" @click="handleOpen('1', [])">
           <img
-            src="https://element.eleme.io/favicon.ico"
-            alt="Element logo"
-            style="width: 45px; height: 45px; margin: 10px -10px" />
+            src="../../assets/SonicWorld.png"
+            alt="希声图标"
+            style="width: 45px; height: 45px; margin: 10px -10px; border-radius: 8px; transform: scaleX(-1)" />
           <template #title>
             <span style="margin-left: 20px">希声</span>
           </template>
@@ -38,24 +38,51 @@
             @click="showLoginCard = !showLoginCard"
             role="button"
             aria-label="用户登录按钮"
+            aria-haspopup="menu"
+            :aria-expanded="showLoginCard"
             tabindex="0">
-            <el-avatar :size="40" :icon="UserFilled" />
+            <el-avatar :size="40" :icon="UserFilled" alt="用户头像" />
   
             <!-- 悬浮显示的登录卡片 -->
-            <div class="login-card" v-show="showLoginCard" role="menu" aria-label="用户登录菜单">
+            <div 
+              class="login-card" 
+              v-show="showLoginCard" 
+              role="menu" 
+              aria-label="用户登录菜单"
+              aria-orientation="vertical">
               <div class="login-header">
-                <el-avatar :size="40" :icon="UserFilled" class="login-avatar" role="menuitem" aria-label="用户头像" tabindex="0" />
+                <el-avatar 
+                  :size="40" 
+                  :icon="UserFilled" 
+                  class="login-avatar" 
+                  role="img" 
+                  aria-label="用户头像" 
+                  tabindex="0" />
                 <!--未登录显示登入，已经登入显示haveLogin-->
                 <div class="login-title" role="menuitem" tabindex="0">
                   <span v-if="haveLogin==null" aria-label="点此登录">点此登录</span>
                   <span v-else aria-label="当前用户">{{haveLogin}}</span>
                 </div>
               </div>
-              <div class="login-menu">
-                <div class="menu-item" role="menuitem" aria-label="点此输入陪伴模式令牌" @click="handleTokenInput" tabindex="0">
+              <div class="login-menu" role="group" aria-label="登录菜单选项">
+                <div 
+                  class="menu-item" 
+                  role="menuitem" 
+                  aria-label="点此输入陪伴模式令牌" 
+                  @click="handleTokenInput" 
+                  @keydown.enter="handleTokenInput"
+                  @keydown.space="handleTokenInput"
+                  tabindex="0">
                   <span>陪伴模式令牌</span>
                 </div>
-                <div class="menu-item" role="menuitem" aria-label="退出登录" @click="handleLogout" tabindex="0">
+                <div 
+                  class="menu-item" 
+                  role="menuitem" 
+                  aria-label="退出登录" 
+                  @click="handleLogout" 
+                  @keydown.enter="handleLogout"
+                  @keydown.space="handleLogout"
+                  tabindex="0">
                   <span>退出登录</span>
                 </div> 
               </div>
@@ -122,8 +149,6 @@
   import otherWrongAudio from '@/assets/audio/login/other_wrong.mp3'
   import successLoginAudio from '@/assets/audio/login/success_login.mp3'
   import loginReminderAudio from '@/assets/audio/login/login_reminder.mp3'
-  import openCardAudio from '@/assets/audio/login/open_login_card.mp3'
-  import closeCardAudio from '@/assets/audio/login/close_login_card.mp3'
   import logOutAudio from '@/assets/audio/login/logout.mp3'
   const haveLogin=ref<string|null>(null);
   haveLogin.value=localStorage.getItem('user_token')
@@ -230,15 +255,6 @@
   
   const showLoginCard = ref(false)
   
-  watch(showLoginCard, (newVal) => {
-    if (newVal) {
-      const audio = new Audio(openCardAudio)
-      audio.play()
-    } else {
-      const audio = new Audio(closeCardAudio)
-      audio.play()
-    }
-  })
   
   const handleTokenInput = () => {
     ElMessageBox.prompt('请输入陪伴模式令牌', '令牌输入', {
