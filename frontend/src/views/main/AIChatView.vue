@@ -13,7 +13,7 @@
       justify-content: space-between;
     ">
     <div class="greeting">
-      <img src="@/assets/xiaozhi.png" alt="小智AI" class="xiaozhi-image" />
+      <!-- <img src="@/assets/xiaozhi.png" alt="小智AI" class="xiaozhi-image" style="transform: scaleX(-1)"/> -->
       <p>{{ greetingMessage || '正在获取天气和时间信息。。。' }}</p>
     </div>
     <div class="chat-container"  style="flex: 1;"  ref="chatContainer">
@@ -30,7 +30,7 @@
               v-if="message.role === 'assistant'"
               src="@/assets/xiaozhi.png"
               alt="AI"
-              class="avatar" />
+              class="avatar" style="transform: scaleX(-1)"/>
             <div class="message-content">
               {{ message.content }}
             </div>
@@ -38,7 +38,7 @@
         </div>
         <!-- 加载提示 -->
         <div v-if="loading" class="loading-indicator">
-          <p class="loading-dots">导盲助手正在思考，请稍候...</p>
+          <p class="loading-dots">正在生成回应，请稍候...</p>
         </div>
         <div v-if="filled" class="loading-indicator">
           <p class="loading-dots">超出对话限制，请开始新的对话</p>
@@ -70,7 +70,6 @@ import { CookieUtils } from '@/utils/cookieUtils'
 
 const router = useRouter()
 const chatContainer = ref<HTMLElement | null>(null)
-// 小智AI对话相关
 const chatMessages = ref<Message[]>([])
 const userInput = ref('')
 const loading = ref(false)
@@ -90,7 +89,7 @@ const limit_wronga = new Audio(limitWrongAudio)
 
 // 视频和拍照相关
 const videoElement = ref<HTMLVideoElement | null>(null)
-let mediaStream: MediaStream | null = null
+let mediaStream: MediaStream | null = null;
 const canvas = document.createElement('canvas')
 const context = canvas.getContext('2d')
 const greetingMessage = ref('')
@@ -187,27 +186,69 @@ const writeString = (view: DataView, offset: number, str: string) => {
 
 // 初始化相机
 const initCamera = async () => {
+  const _plus = (window as any).plus;
+  if (_plus && _plus.os.name === "Android") {
+    const permission = "android.permission.CAMERA";
+    const mainActivity = _plus.android.runtimeMainActivity();
+    const PackageManager = _plus.android.importClass("android.content.pm.PackageManager");
+    
+    // 检查权限
+    if (mainActivity.checkSelfPermission(permission) !== PackageManager.PERMISSION_GRANTED) {
+      // 申请权限
+      mainActivity.requestPermissions([permission], {
+        onGranted: async function () {
+          console.log("Camera 权限已授权");
+          await startCamera();
+        },
+        onDenied: function () {
+          alert("相机权限被拒绝，请手动在系统设置中开启");
+        }
+      });
+    } else {
+      // 已经有权限，直接打开相机
+      await startCamera();
+    }
+  } else {
+    // 不是 Android 或者没有 plus 对象，直接调用
+    await startCamera();
+  }
+};
+
+// 实际的相机启动逻辑
+const startCamera = async () => {
   try {
-    // 请求相机权限并获取视频流
-    mediaStream = await navigator.mediaDevices.getUserMedia({
+    const mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
         width: { ideal: 1440 },
         height: { ideal: 2560 },
-        facingMode: "environment" // 指定使用后置摄像头
+        facingMode: "environment" // 后置摄像头
       }
-    })
-    
-    // 将视频流设置到video元素
+    });
+
     if (videoElement.value) {
       videoElement.value.srcObject = mediaStream;
-      
       canvas.width = 480;
-      canvas.height = Math.round(480 * (16/9));
+      canvas.height = Math.round(480 * (16 / 9));
     }
   } catch (error) {
-    console.error('相机访问失败:', error);
+    alert("相机访问失败:" + error);
   }
-}
+};
+
+// 页面加载时检查 plus 是否已加载
+onMounted(() => {
+  if ((window as any).plus) {
+    initCamera();
+  } else {
+    const checkPlusInterval = setInterval(() => {
+      if ((window as any).plus) {
+        clearInterval(checkPlusInterval);
+        initCamera();
+      }
+    }, 500);
+  }
+});
+
 
 // 捕获图像并发送到后端
 const captureAndSendImage = async (intent: string) => {
@@ -294,12 +335,12 @@ onMounted(() => {
 // 组件卸载时清理资源
 onUnmounted(() => {
   // 清理相机资源
-  if (mediaStream) {
-    mediaStream.getTracks().forEach((track) => track.stop());
-  }
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(track => track.stop())
-  }
+  // if (mediaStream) {
+  //   mediaStream.getTracks().forEach((track) => track.stop());
+  // }
+  // if (mediaStream) {
+  //   mediaStream.getTracks().forEach(track => track.stop())
+  // }
   activeAudioSource.value?.disconnect()
   audioContext.value?.close()
 })
@@ -411,8 +452,7 @@ const sendMessage = async () => {
 
 <style scoped >
 .greeting {
-display: flex;
-align-items: center;
+text-align: center;
 }
 
 .xiaozhi-image {
@@ -445,9 +485,9 @@ margin-bottom: 10px;
 }
 
 .avatar {
-width: 25px;
-height: 25px;
-margin-right: 10px;
+width: 42px;
+height: 42px;
+margin-right: 8px;
 }
 
 .message-content {

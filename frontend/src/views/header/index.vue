@@ -10,7 +10,7 @@
           <img
             src="../../assets/SonicWorld.png"
             alt="希声图标"
-            style="width: 45px; height: 45px; margin: 10px -10px; border-radius: 8px; transform: scaleX(-1)" />
+            style="width: 45px; height: 45px; margin: 10px -10px; border-radius: 8px; " />
           <template #title>
             <span style="margin-left: 20px">希声</span>
           </template>
