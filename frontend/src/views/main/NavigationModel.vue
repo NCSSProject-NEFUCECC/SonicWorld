@@ -188,8 +188,8 @@ const initCamera = async () => {
     // 请求相机权限并获取视频流
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 1440 },
-        height: { ideal: 2560 },
+        width: { ideal: 3072 },
+        height: { ideal: 4096 },
         facingMode: "environment" // 指定使用后置摄像头
       }
     })
@@ -452,7 +452,8 @@ onUnmounted(() => {
 video {
   width: 80%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background-color: black;
   border-radius: 15px;
   margin: auto;
   display: block;

@@ -193,7 +193,7 @@ def navigate():
             return jsonify({"error": "图像、位置信息或导航指令不能为空"}), 400
         
         # 保存接收到的图像
-        image_path = save_image(image_data)
+        image_path = save_image(image_data,name="navigation.png")
         destination = ana_msg(user_message)
         # 调用导航函数处理图像和位置信息，返回流式响应
         return process_navigation(image_path, location,destination,heading)
@@ -203,7 +203,7 @@ def navigate():
         return jsonify({"error": "导航服务器内部错误"}), 500
 
 # 保存Base64编码的图像到文件
-def save_image(image_data):
+def save_image(image_data,name="rec.png"):
     # 从Base64字符串中提取图像数据
     if image_data.startswith('data:image'):
         # 移除MIME类型前缀
@@ -214,7 +214,7 @@ def save_image(image_data):
         os.makedirs('img')
     
     # 使用固定文件名保存图片，覆盖之前的图片
-    image_path = os.path.join('img', "rec.png")
+    image_path = os.path.join('img', name)
     
     # 解码并保存图像
     with open(image_path, "wb") as image_file:
@@ -373,7 +373,7 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                 completion = dashscope.MultiModalConversation.call(
                     model="qwen-vl-max-latest",
                     messages=llm_visual_finder,
-                    temperature=0.9,
+                    temperature=0.85,
                     result_format='message',
                     timeout=timeout,
                     stream=True,

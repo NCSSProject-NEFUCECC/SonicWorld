@@ -219,16 +219,16 @@ const startCamera = async () => {
   try {
     const mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 1440 },
-        height: { ideal: 2560 },
+        width: { ideal: 3072 },
+        height: { ideal: 4096 },
         facingMode: "environment" // 后置摄像头
       }
     });
 
     if (videoElement.value) {
       videoElement.value.srcObject = mediaStream;
-      canvas.width = 480;
-      canvas.height = Math.round(480 * (16 / 9));
+      canvas.width = 540;
+      canvas.height = 720;
     }
   } catch (error) {
     alert("相机访问失败:" + error);

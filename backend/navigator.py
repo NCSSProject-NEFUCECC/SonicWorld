@@ -306,7 +306,3 @@ def process_navigation_request(image_path, current_location, destination=None, h
             yield f"data: {error_msg}\n\n"
     
     return generate
-
-        
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
