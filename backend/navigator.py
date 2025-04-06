@@ -5,6 +5,7 @@ import json
 import os
 import base64
 import sys
+import chater
 from datetime import datetime
 from dashscope.api_entities.dashscope_response import SpeechSynthesisResponse
 from dashscope.audio.tts_v2 import *
