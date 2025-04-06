@@ -268,11 +268,6 @@ const initGeolocation = () => {
 const captureAndSendFrame = async () => {
   // 确保所有必要条件都满足
   if (!videoElement.value || !locationInfo.value || !cameraReady.value) {
-    // console.log('条件不满足，延迟拍照', {
-    //   视频元素: !!videoElement.value,
-    //   位置信息: !!locationInfo.value,
-    //   相机就绪: cameraReady.value
-    // })
     setTimeout(captureAndSendFrame, 1000) // 1秒后重试
     return
   }
@@ -396,7 +391,7 @@ onMounted(() => {
         try {
           const permission = await (DeviceOrientationEvent as any).requestPermission()
           if (permission === 'granted') {
-            window.addEventListener('deviceorientation', handleDeviceOrientation, false)
+            window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, false)
             console.log('iOS 设备方向权限已获取')
           } else {
             console.error('iOS 设备方向权限被拒绝')
@@ -407,7 +402,7 @@ onMounted(() => {
       }, { once: true })
     } else {
       // 其他设备直接添加监听
-      window.addEventListener('deviceorientation', handleDeviceOrientation, false)
+      window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, false)
       console.log('设备方向事件监听已添加')
     }
   } else {
@@ -429,7 +424,7 @@ onUnmounted(() => {
   
   // 清理设备方向事件监听
   if (hasDeviceOrientation.value) {
-    window.removeEventListener('deviceorientation', () => {}, false)
+    window.removeEventListener('deviceorientationabsolute', () => {}, false)
   }
 })
 </script>
@@ -461,8 +456,9 @@ video {
 
 .location-info {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   background-color: rgba(0, 0, 0, 0.5);
   color: white;
   padding: 3px 6px;
