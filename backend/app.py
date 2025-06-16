@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from gen_audio import TTS
+from gen_text import STT
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask import Response, stream_with_context
@@ -6,16 +8,89 @@ import os
 import json
 import base64
 import time
-import dashscope
+import traceback
 from navigator import ana_msg,get_region
 from chater import convert_to_multimodal, intent_recognition
 import chater
 from datetime import datetime
 from database import db, User
-from dashscope.audio.tts_v2 import SpeechSynthesizer, AudioFormat, ResultCallback
-from dashscope import Application
 from weather import get_time_of_day,weather_map,weather_url
 import requests
+import uuid
+import time
+import requests
+from auth_util import gen_sign_headers
+from functions_call import *
+
+def extract_function_names(api_response: str):
+    """
+    从包含<APIs>标签的文本中提取所有函数名
+    
+    参数:
+        api_response: 可能包含API调用信息的字符串，例如：
+        '聊天内容<APIs>[{"name":"func1"},{"name":"func2"}]</APIs>其他内容'
+        
+    返回:
+        提取到的函数名列表（如 ["func1", "func2"]）
+        
+    异常:
+        ValueError: 当没有找到有效API声明时抛出
+    """
+    # 第一步：提取<APIs>标签内的内容
+    api_match = re.search(r'<APIs>(.*?)</APIs>', api_response, re.DOTALL)
+    if not api_match:
+        raise ValueError("未找到<APIs>标签")
+    
+    api_content = api_match.group(1).strip()
+    
+    # 第二步：解析JSON数组（支持多种格式）
+    try:
+        # 处理可能存在的尾部逗号（非标准JSON）
+        cleaned_content = re.sub(r',\s*\]', ']', api_content)
+        api_list = json.loads(cleaned_content)
+        
+        if not isinstance(api_list, list):
+            api_list = [api_list]  # 处理单对象非数组情况
+            
+        # 提取所有有效函数名
+        return [
+            str(item['name']) 
+            for item in api_list 
+            if isinstance(item, dict) and 'name' in item
+        ]
+    
+    except json.JSONDecodeError:
+        # 第三步：如果JSON解析失败，使用正则表达式兜底提取
+        return re.findall(r'"name":\s*"([^"]+)"', api_content)
+def extract_text_content(line_text):
+    """从vivo大模型的流式响应中提取文本内容"""
+    try:
+        # 检查是否是data:开头的JSON格式
+        if line_text.startswith('data:'):
+            # 提取JSON部分
+            json_text = line_text[5:].strip()
+            if json_text:
+                # 解析JSON
+                json_data = json.loads(json_text)
+                # 提取message字段
+                text_content = json_data.get('message', '')
+                message_type = json_data.get('type', 'text')
+                
+                if text_content and message_type == 'text':
+                    return text_content
+        else:
+            # 尝试直接解析JSON
+            line_data = json.loads(line_text)
+            text_content = line_data.get('text', '')
+            if text_content:
+                return text_content
+    except json.JSONDecodeError:
+        # 如果不是JSON格式，直接使用文本
+        print(f"非JSON格式: {line_text}")
+    except Exception as e:
+        print(f"解析文本内容错误: {str(e)}")
+    
+    return None
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
@@ -26,42 +101,21 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
-dashscope.api_key = "sk-6a259a1064144086be0e11e5903c1d49"
-
+# 请替换APP_ID、APP_KEY
+APP_ID = '2025881276'
+APP_KEY = 'SUzaUkzFYhnDSYwM'
+URI = '/vivogpt/completions/stream'
+DOMAIN = 'api-ai.vivo.com.cn'
+METHOD = 'POST'
 user_messages_dic = {}
 
-TTS_MODEL = "cosyvoice-v1"
-TTS_VOICE = "longxiaochun"  # 可根据需要调整
+def encode_image(image_path):
+    with open(image_path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
 def get_timestamp():
     now = datetime.now()
     return now.strftime("[%Y-%m-%d %H:%M:%S.%f]")
-class StreamingAudioCallback(ResultCallback):
-    def __init__(self):
-        self.audio_buffer = bytearray()
-
-    def on_open(self):
-        print(get_timestamp() + " WebSocket 已连接")
-
-    def on_complete(self):
-        print(get_timestamp() + " 语音合成任务完成")
-
-    def on_error(self, message: str):
-        print(get_timestamp() + f" 语音合成错误: {message}")
-
-    def on_close(self):
-        print(get_timestamp() + " WebSocket 连接关闭")
-
-    def on_event(self, message):
-        pass
-
-    def on_data(self, data: bytes) -> None:
-        # print(get_timestamp() + f" 接收到音频数据长度: {len(data)}")
-        self.audio_buffer.extend(data)
-
-
-def encode_image(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
 
 @app.route('/api/weather', methods=['POST'])
 def get_weather():
@@ -87,17 +141,17 @@ def get_weather():
             humidity = round(weather['humidity'] * 100)  # 湿度
             comfort = weather["life_index"]["comfort"]["desc"]
             text = f"{get_time_of_day()}。今天{comfort}，气温{temperature}°C，天气是{weather_desc}，湿度{humidity}%"
-            callback = StreamingAudioCallback()
-            synthesizer = SpeechSynthesizer(
-                model=TTS_MODEL,
-                voice=TTS_VOICE,
-                format=AudioFormat.PCM_22050HZ_MONO_16BIT,
-                callback=callback
-            )
-            synthesizer.streaming_call(text)
-            time.sleep(0.5)
-            synthesizer.streaming_complete()
-            audio_data = bytes(callback.audio_buffer)
+            print(text)
+            global weater_info
+            weater_info = text
+            input_params = {
+                'app_id': APP_ID,
+                'app_key': APP_KEY,
+                'engineid': 'long_audio_synthesis_screen'
+            }
+            tts = TTS(**input_params)
+            tts.open()
+            audio_data = bytes(tts.gen_radio(text=text))
             return jsonify({
                 'status': 'success',
                 'data': {
@@ -112,13 +166,14 @@ def get_weather():
             }), 500
             
     except Exception as e:
-        print(f"获取天气信息错误: {str(e)}")
+        error_info = traceback.format_exc()
+        print(f"获取天气信息错误 - 文件: {__file__}, 函数: get_weather, 错误: {str(e)}")
+        print(f"详细错误信息:\n{error_info}")
         return jsonify({
             'status': 'error',
             'message': '抱歉，没有获取到天气信息'
         }), 500
-    
-
+  
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
@@ -133,13 +188,18 @@ def chat():
                 user_location = None
                 print('位置信息不完整或格式错误')
         except Exception as e:
-            print("获取位置信息错误:", str(e))
+            error_info = traceback.format_exc()
+            print(f"获取位置信息错误 - 文件: {__file__}, 函数: chat, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+            print(f"详细错误信息:\n{error_info}")
             user_location = None
 
         try:
             user_token = data.get('user_token', '')
             print("这条消息来自用户",user_token,"msg:",user_message)
-        except:
+        except Exception as e:
+            error_info = traceback.format_exc()
+            print(f"获取用户token错误 - 文件: {__file__}, 函数: chat, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+            print(f"详细错误信息:\n{error_info}")
             user_token = "None"
         image_data = data.get('image', '')
         # print(len(user_message),user_message)
@@ -167,7 +227,9 @@ def chat():
                            'X-Accel-Buffering': 'no'
                        })
     except Exception as e:
-        print(f"错误: {str(e)}")
+        error_info = traceback.format_exc()
+        print(f"聊天服务错误 - 文件: {__file__}, 函数: chat, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+        print(f"详细错误信息:\n{error_info}")
         return jsonify({"error": "服务器内部错误"}), 500
 
 # 新增导航API端点
@@ -179,14 +241,20 @@ def navigate():
         location = data.get('location', {})
         try:
             heading = data.get('heading', 0)
-        except:
+        except Exception as e:
+            error_info = traceback.format_exc()
+            print(f"获取朝向信息错误 - 文件: {__file__}, 函数: navigate, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+            print(f"详细错误信息:\n{error_info}")
             heading = None
         # print("获取到朝向",heading)
         user_token = data.get('user_token', '')
         print("当前用户：",user_token)
         try:
             user_message = user_messages_dic.get(user_token, 'none')
-        except:
+        except Exception as e:
+            error_info = traceback.format_exc()
+            print(f"获取用户消息错误 - 文件: {__file__}, 函数: navigate, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+            print(f"详细错误信息:\n{error_info}")
             user_message = "none"
         # print("-"*10,user_message,"-"*10)
         if not image_data or not location:
@@ -199,9 +267,150 @@ def navigate():
         return process_navigation(image_path, location,destination,heading)
     
     except Exception as e:
-        print(f"导航错误: {str(e)}")
+        error_info = traceback.format_exc()
+        print(f"导航错误 - 文件: {__file__}, 函数: navigate, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+        print(f"详细错误信息:\n{error_info}")
         return jsonify({"error": "导航服务器内部错误"}), 500
 
+@app.route('/api/cpny', methods=['POST'])
+def cpny_chat():
+    try:
+        audio_data = request.data
+        text = STT(audio_data)
+    except Exception as e:
+        error_info = traceback.format_exc()
+        print(f"STT API错误 - 文件: {__file__}, 函数: cpny_chat, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+        print(f"详细错误信息:\n{error_info}")
+        return jsonify({
+            'status': 'error',
+            'message': '语音识别失败'
+        }), 500
+    input_params = {
+    'app_id': APP_ID,
+    'app_key': APP_KEY,
+    'engineid': 'long_audio_synthesis_screen'
+    }
+    tts = TTS(**input_params)
+    tts.open()
+    # 设置请求超时时间
+    timeout = 30
+    full_text = ""
+    history_msg = [{'role':'user', 'content': text}]
+    try:
+
+        print("已进入普通聊天部分")
+        print("weather_info:",weather_info)
+        # llm_basechat.extend(history_msg)
+        # 准备BlueLM模型调用参数
+        params = {
+            'requestId': str(uuid.uuid4())
+        }
+        print('requestId:', params['requestId'])
+        
+        # 构建请求数据
+        system_prompt = f'这里是一些可能有用的信息，供你参考，但你不能主动提及。天气信息与位置信息:{weather_info}，时间信息:{time_info}，只有当用户问你这些信息时，你才应该告诉用户。'
+        
+        # 将system_prompt添加到历史消息中
+        messages_with_system = []
+        if len(history_msg) > 0 and history_msg[0].get('role') != 'system':
+            messages_with_system.append({"role": "system", "content": system_prompt})
+        messages_with_system.extend(history_msg)
+        
+        data = {
+            'prompt': system_prompt,
+            'sessionId': str(uuid.uuid4()),
+            'model': 'vivo-BlueLM-TB-Pro',
+            'messages': messages_with_system
+        }
+        
+        # 生成认证头部
+        headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+        headers['Content-Type'] = 'application/json'
+        
+        # 发起请求
+        url = 'http://{}{}'.format(DOMAIN, URI)
+        start_time = time.time()
+        response = requests.post(url, json=data, headers=headers, params=params, stream=True)
+        
+        if response.status_code == 200:
+            first_line = True
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        if first_line:
+                            first_line = False
+                            fl_time = time.time()
+                            fl_timecost = fl_time - start_time
+                            print("首字耗时: %.2f秒" % fl_timecost)
+                        
+                        # 解析返回的数据
+                        line_text = line.decode('utf-8', errors='ignore')
+                        print(line_text)
+                        
+                        # 从返回的数据中提取文本内容
+                        try:
+                            # 检查是否是data:开头的JSON格式
+                            if line_text.startswith('data:'):
+                                # 提取JSON部分
+                                json_text = line_text[5:].strip()
+                                # 解析JSON
+                                json_data = json.loads(json_text)
+                                # 提取message字段
+                                text_content = json_data.get('message', '')
+                                message_type = json_data.get('type', 'text')
+                                
+                                if text_content and message_type == 'text':
+                                    print(f"解析到消息: {text_content}")
+                                    full_text += text_content
+                                    # 发送文本内容到前端
+                                    yield f"data: {text_content}\n\n"
+                                    # 流式合成语音                                   
+                                    # 发送音频数据
+                                    audio_data = bytes(bytes(tts.gen_radio(text=text_content)))
+                                    if audio_data:
+                                        yield f"data:audio,{audio_data.hex()}\n\n"
+                            else:
+                                # 尝试直接解析JSON
+                                line_data = json.loads(line_text)
+                                text_content = line_data.get('text', '')
+                                if text_content:
+                                    print(f"{text_content}")
+                                    full_text += text_content
+                                    # 发送文本内容到前端
+                                    yield f"data: {text_content}\n\n"
+                                    # 流式合成语音
+                                    # 发送音频数据
+                                    #audio_data = bytes(tts.gen_radio(text=text_content))
+                                    if audio_data:
+                                        yield f"data:audio,{audio_data.hex()}\n\n"
+                        except json.JSONDecodeError:
+                            # 如果不是JSON格式，直接使用文本
+                            print(f"非JSON格式: {line_text}")
+                    except Exception as e:
+                        error_info = traceback.format_exc()
+                        print(f"处理流式输出行错误 - 文件: {__file__}, 函数: cpny_chat, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                        print(f"详细错误信息:\n{error_info}")
+                        continue
+            
+            # 计算总耗时
+            end_time = time.time()
+            timecost = end_time - start_time
+            print("请求耗时: %.2f秒" % timecost)
+        else:
+            print(f"BlueLM API错误: {response.status_code}, {response.text}")
+            yield f"data: 抱歉，模型服务返回错误，状态码: {response.status_code}\n\n"
+        if audio_data:
+            yield f"data:audio,{audio_data.hex()}\n\n"
+        yield f"data: [完成]\n\n"
+        history_msg.append({"role": "assistant", "content": full_text})
+    except Exception as e:
+        error_info = traceback.format_exc()
+        print(f"普通聊天API调用错误 - 文件: {__file__}, 函数: cpny_chat, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+        print(f"详细错误信息:\n{error_info}")
+        if "Connection" in str(e):
+            yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
+        else:
+            yield f"data: 抱歉，处理您的请求时出现了问题。\n\n"
 # 保存Base64编码的图像到文件
 def save_image(image_data,name="rec.png"):
     # 从Base64字符串中提取图像数据
@@ -240,21 +449,14 @@ def process_navigation(image_path, location, destination=None, heading=None):
                            'X-Accel-Buffering': 'no'
                        })
     except Exception as e:
-        print(f"处理导航请求错误: {str(e)}")
+        error_info = traceback.format_exc()
+        print(f"处理导航请求错误 - 文件: {__file__}, 函数: process_navigation, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+        print(f"详细错误信息:\n{error_info}")
         return jsonify({"error": "导航处理失败，请稍后再试"}), 500
-
 
 def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", user_location=None):
     # 处理用户消息
     user_messages_dic[user_token] = history_msg
-    # print("-"*10,user_messages_dic,"-"*10)
-    callback = StreamingAudioCallback()
-    synthesizer = SpeechSynthesizer(
-        model=TTS_MODEL,
-        voice=TTS_VOICE,
-        format=AudioFormat.PCM_22050HZ_MONO_16BIT,
-        callback=callback
-    )
     # 如果没有提供图像路径，使用默认图像
     if not image_path:
         image_path = r"img/default.png"
@@ -292,7 +494,9 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
         yield f"data: 抱歉，系统处理出现错误。\n\n"
         return
     except Exception as e:
-        print(f"数据处理错误: {str(e)}")
+        error_info = traceback.format_exc()
+        print(f"数据处理错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+        print(f"详细错误信息:\n{error_info}")
         yield f"data: 抱歉，系统处理出现错误。\n\n"
         return
     llm_visual_finder = [
@@ -309,52 +513,123 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
             ]   
                     
     try:
+        input_params = {
+        'app_id': APP_ID,
+        'app_key': APP_KEY,
+        'engineid': 'long_audio_synthesis_screen'
+        }
+        tts = TTS(**input_params)
+        tts.open()
         # 设置请求超时时间
         timeout = 30
         full_text = ""
         if intent == "普通聊天":
             try:
                 print("已进入普通聊天部分")
-                print("weather_info:",weather_info)
-                # llm_basechat.extend(history_msg)
-                completion = Application.call(
-                    app_id='94599ca0fe134dfcad102e05b17f5e19',
-                    prompt=f'这里是一些可能有用的信息，供你参考，但你不能主动提及。天气信息与位置信息:{weather_info}，时间信息:{time_info}，只有当用户问你这些信息时，你才应该告诉用户。',
-                    messages=history_msg,
-                    stream=True,
-                    # 增量式流式输出
-                    incremental_output=True
-                )
-                for chunk in completion:
-                    try:
-                        text_content = chunk.output.text
-                        if text_content:
-                            print(f"{text_content}")
-                            full_text += text_content
-                            # 发送文本内容到前端
-                            yield f"data: {text_content}\n\n"
-                            # 流式合成语音
-                            synthesizer.streaming_call(text_content)
-                            time.sleep(0.1)  # 给合成器处理时间
-                            
-                            # 发送音频数据
-                            audio_data = bytes(callback.audio_buffer)
-                            if audio_data:
-                                yield f"data:audio,{audio_data.hex()}\n\n"
-                                callback.audio_buffer.clear()
-                    except Exception as e:
-                        print(f"处理流式输出块错误: {str(e)}")
-                        continue
-                synthesizer.streaming_complete()
-                audio_data = bytes(callback.audio_buffer)
-                if audio_data:
-                    yield f"data:audio,{audio_data.hex()}\n\n"
-                    callback.audio_buffer.clear()
+                print("weather_info:", weather_info)
+                
+                # 准备BlueLM模型调用参数
+                params = {
+                    'requestId': str(uuid.uuid4())
+                }
+                print('requestId:', params['requestId'])
+                
+                # 构建请求数据
+                system_prompt = f'这里是一些可能有用的信息，供你参考，但你不能主动提及。天气信息与位置信息:{weather_info}，时间信息:{time_info}，只有当用户问你这些信息时，你才应该告诉用户。'
+                system_prompt += chater.normal_chater
+                
+                # 将system_prompt添加到历史消息中
+                messages_with_system = []
+                if len(history_msg) > 0 and history_msg[0].get('role') != 'system':
+                    messages_with_system.append({"role": "system", "content": system_prompt})
+                messages_with_system.extend(history_msg)
+                
+                # 处理流式响应的生成器函数
+                def process_stream_response():
+                    nonlocal full_text, history_msg, messages_with_system
+                    
+                    data = {
+                        'prompt': system_prompt,
+                        'sessionId': str(uuid.uuid4()),
+                        'model': 'vivo-BlueLM-TB-Pro',
+                        'messages': messages_with_system
+                    }
+                    
+                    # 生成认证头部
+                    headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+                    headers['Content-Type'] = 'application/json'
+                    
+                    # 发起请求
+                    url = 'http://{}{}'.format(DOMAIN, URI)
+                    start_time = time.time()
+                    response = requests.post(url, json=data, headers=headers, params=params, stream=True)
+                    
+                    if response.status_code == 200:
+                        first_line = True
+                        for line in response.iter_lines():
+                            if line:
+                                try:
+                                    if first_line:
+                                        first_line = False
+                                        fl_time = time.time()
+                                        fl_timecost = fl_time - start_time
+                                        print("首字耗时: %.2f秒" % fl_timecost)
+                                    
+                                    # 解析返回的数据
+                                    line_text = line.decode('utf-8', errors='ignore')
+                                    print(line_text)
+                                    
+                                    # 从返回的数据中提取文本内容
+                                    text_content = extract_text_content(line_text)
+                                    if text_content:
+                                        print(f"解析到消息: {text_content}")
+                                        full_text += text_content
+                                        yield f"data: {text_content}\n\n"
+                                        
+                                except Exception as e:
+                                    error_info = traceback.format_exc()
+                                    print(f"处理流式输出行错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                                    print(f"详细错误信息:\n{error_info}")
+                                    continue
+                        
+                        # 计算总耗时
+                        end_time = time.time()
+                        timecost = end_time - start_time
+                        print("请求耗时: %.2f秒" % timecost)
+                    else:
+                        print(f"BlueLM API错误: {response.status_code}, {response.text}")
+                        yield f"data: 抱歉，模型服务返回错误，状态码: {response.status_code}\n\n"
+                
+                # 首次调用模型获取响应
+                yield from process_stream_response()
+                
+                # 检查是否包含function call
+                if '<APIs>' in full_text and '</APIs>' in full_text:
+                    print("检测到function call，开始处理")
+                    function_names = extract_function_names(full_text)
+                    yield f"data: 现在，我将去调用{function_names}，容我思考一下。。。\n\n\n"
+                    
+                    # 处理function call
+                    call_result = handle_function_call(full_text)
+                    print(f"API调用结果: {call_result}")
+                    
+                    # 将function call结果添加到消息历史
+                    history_msg.append({"role": "function", "content": call_result})
+                    messages_with_system.append({"role": "function", "content": call_result})
+                    
+                    # 重置full_text，准备接收新的响应
+                    full_text = ""
+                    
+                    # 再次调用模型获取基于function call结果的响应
+                    yield from process_stream_response()
+                
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
-                # print("响应全文：", full_text)
+                
             except Exception as e:
-                print(f"普通聊天API调用错误: {str(e)}")
+                error_info = traceback.format_exc()
+                print(f"普通聊天API调用错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                print(f"详细错误信息:\n{error_info}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:
@@ -364,52 +639,117 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
             try:
                 # 先添加历史对话（除了最后一个元素，即当前用户输入）
                 llm_visual_finder.extend(history_msg[:-1])  # 添加除最后一个元素外的所有历史消息
-                # 转换为多模态格式
-                llm_visual_finder = convert_to_multimodal(llm_visual_finder)
-                # 提取当前用户输入的文本部分并添加到数组中
+                # 提取当前用户输入的文本部分
                 user_message = history_msg[-1].get('content', '')
-                llm_visual_finder.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
                 yield f"data: 查找某物位置：\n\n"
-                completion = dashscope.MultiModalConversation.call(
-                    model="qwen-vl-max-latest",
-                    messages=llm_visual_finder,
-                    temperature=0.85,
-                    result_format='message',
-                    timeout=timeout,
-                    stream=True,
-                    # 增量式流式输出
-                    incremental_output=True
-                )
-                for chunk in completion:
-                    try:
-                        text_content = chunk.output.choices[0].message.content[0].get('text', '')
-                        if text_content:
-                            print(f"{text_content}")
-                            full_text += text_content
-                            yield f"data: {text_content}\n\n"
-                            # 流式合成语音
-                            synthesizer.streaming_call(text_content)
-                            time.sleep(0.1)  # 给合成器处理时间
-                            
+                
+                # 准备BlueLM多模态模型调用参数
+                params = {
+                    'requestId': str(uuid.uuid4())
+                }
+                print('requestId:', params['requestId'])
+                
+                # 读取图片并转换为Base64
+                with open(image_path, "rb") as f:
+                    b_image = f.read()
+                image = base64.b64encode(b_image).decode('utf-8')
+                
+                # 构建请求数据
+                data = {
+                    'prompt': '你好',
+                    'sessionId': str(uuid.uuid4()),
+                    'requestId': params['requestId'],
+                    'model': 'vivo-BlueLM-V-2.0',
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": chater.finder,
+                            "contentType": "text"
+                        },
+                        {
+                            "role": "user",
+                            "content": "data:image/JPEG;base64," + image,
+                            "contentType": "image"
+                        },
+                        {
+                            "role": "user",
+                            "content": user_message,
+                            "contentType": "text"
+                        }
+                    ],
+                }
+                
+                # 生成认证头部
+                headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+                headers['Content-Type'] = 'application/json'
+                
+                # 发起请求
+                url = 'http://{}{}' .format(DOMAIN, URI)
+                response = requests.post(url, json=data, headers=headers, params=params, stream=True)
+                
+                if response.status_code == 200:
+                    first_line = True
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                if first_line:
+                                    first_line = False
+                                    fl_time = time.time()
+                                    fl_timecost = fl_time - start_time
+                                    print("首字耗时: %.2f秒" % fl_timecost)
+                                
+                                line_text = line.decode('utf-8', errors='ignore')
+                                print(line_text)
+                                
+                                # 从返回的数据中提取文本内容
+                                try:
+                                    # 检查是否是data:开头的JSON格式
+                                    if line_text.startswith('data:'):
+                                        # 提取JSON部分
+                                        json_text = line_text[5:].strip()
+                                        # 解析JSON
+                                        json_data = json.loads(json_text)
+                                        # 提取message字段
+                                        text_content = json_data.get('message', '')
+                                        message_type = json_data.get('type', 'text')
+                                        
+                                        if text_content and message_type == 'text':
+                                            print(f"解析到消息: {text_content}")
+                                            full_text += text_content
+                                            # 发送文本内容到前端
+                                            yield f"data: {text_content}\n\n"
+                                    else:
+                                        # 尝试直接解析JSON
+                                        line_data = json.loads(line_text)
+                                        text_content = line_data.get('text', '')
+                                        if text_content:
+                                            print(f"{text_content}")
+                                            full_text += text_content
+                                            # 发送文本内容到前端
+                                            yield f"data: {text_content}\n\n"
+                                except json.JSONDecodeError:
+                                    # 如果不是JSON格式，直接使用文本
+                                    print(f"非JSON格式: {line_text}")
+                            except Exception as e:
+                                error_info = traceback.format_exc()
+                                print(f"处理流式输出行错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                                print(f"详细错误信息:\n{error_info}")
+                                continue
+                            # 流式合成语音                           
                             # 发送音频数据
-                            audio_data = bytes(callback.audio_buffer)
+                            #audio_data = bytes(tts.gen_radio(text=text_content))
                             if audio_data:
                                 yield f"data:audio,{audio_data.hex()}\n\n"
                                 print("发送音频数据，长度：", len(audio_data))
-                                callback.audio_buffer.clear()
-                    except Exception as e:
-                        print(f"处理流式输出块错误: {str(e)}")
-                        continue
-                synthesizer.streaming_complete()
-                audio_data = bytes(callback.audio_buffer)
                 if audio_data:
                     yield f"data:audio,{audio_data.hex()}\n\n"
-                    callback.audio_buffer.clear()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
             except Exception as e:
-                print(f"查找位置API调用错误: {str(e)}")
+                error_info = traceback.format_exc()
+                print(f"查找位置API调用错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                print(f"详细错误信息:\n{error_info}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:
@@ -419,53 +759,116 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
             try:
                 # 先添加历史对话（除了最后一个元素，即当前用户输入）
                 llm_visual_recoder.extend(history_msg[:-1])  # 添加除最后一个元素外的所有历史消息
-                # 转换为多模态格式
-                llm_visual_recoder = convert_to_multimodal(llm_visual_recoder)
-                # 提取当前用户输入的文本部分并添加到数组中
+                # 提取当前用户输入的文本部分
                 user_message = history_msg[-1].get('content', '')
-                llm_visual_recoder.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
-                yield f"data: 识别前方情况：\n\n"
-                completion = dashscope.MultiModalConversation.call(
-                    model="qwen-vl-max-latest",
-                    messages=llm_visual_recoder,
-                    temperature=0.8,
-                    timeout=timeout,
-                    result_format='message',
-                    stream=True,
-                    # 增量式流式输出
-                    incremental_output=True
-                )
-                for chunk in completion:
-                    try:
-                        text_content = chunk.output.choices[0].message.content[0].get('text', '')
-                        if text_content:
-                            print(f"{text_content}")
-
-                            full_text += text_content
-                            yield f"data: {text_content}\n\n"
-                            # 流式合成语音
-                            synthesizer.streaming_call(text_content)
-                            time.sleep(0.1)  # 给合成器处理时间
-                            
+                yield f"data: 识别前方的情况: \n\n"
+                
+                # 准备BlueLM多模态模型调用参数
+                params = {
+                    'requestId': str(uuid.uuid4())
+                }
+                print('requestId:', params['requestId'])
+                
+                # 读取图片并转换为Base64
+                with open(image_path, "rb") as f:
+                    b_image = f.read()
+                image = base64.b64encode(b_image).decode('utf-8')
+                
+                # 构建请求数据
+                data = {
+                    'prompt': '你好',
+                    'sessionId': str(uuid.uuid4()),
+                    'requestId': params['requestId'],
+                    'model': 'vivo-BlueLM-V-2.0',
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": chater.recoder,
+                            "contentType": "text"
+                        },
+                        {
+                            "role": "user",
+                            "content": "data:image/JPEG;base64," + image,
+                            "contentType": "image"
+                        },
+                        {
+                            "role": "user",
+                            "content": user_message,
+                            "contentType": "text"
+                        }
+                    ],
+                }
+                
+                # 生成认证头部
+                headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+                headers['Content-Type'] = 'application/json'
+                
+                # 发起请求
+                url = 'http://{}{}' .format(DOMAIN, URI)
+                response = requests.post(url, json=data, headers=headers, params=params, stream=True)
+                
+                if response.status_code == 200:
+                    first_line = True
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                if first_line:
+                                    first_line = False
+                                    fl_time = time.time()
+                                    fl_timecost = fl_time - start_time
+                                    print("首字耗时: %.2f秒" % fl_timecost)
+                                
+                                line_text = line.decode('utf-8', errors='ignore')
+                                print(line_text)
+                                
+                                # 从返回的数据中提取文本内容
+                                try:
+                                    # 检查是否是data:开头的JSON格式
+                                    if line_text.startswith('data:'):
+                                        # 提取JSON部分
+                                        json_text = line_text[5:].strip()
+                                        # 解析JSON
+                                        json_data = json.loads(json_text)
+                                        # 提取message字段
+                                        text_content = json_data.get('message', '')
+                                        message_type = json_data.get('type', 'text')
+                                        
+                                        if text_content and message_type == 'text':
+                                            print(f"解析到消息: {text_content}")
+                                            full_text += text_content
+                                            # 发送文本内容到前端
+                                            yield f"data: {text_content}\n\n"
+                                    else:
+                                        # 尝试直接解析JSON
+                                        line_data = json.loads(line_text)
+                                        text_content = line_data.get('text', '')
+                                        if text_content:
+                                            print(f"{text_content}")
+                                            full_text += text_content
+                                            # 发送文本内容到前端
+                                            yield f"data: {text_content}\n\n"
+                                except json.JSONDecodeError:
+                                    # 如果不是JSON格式，直接使用文本
+                                    print(f"非JSON格式: {line_text}")
+                            except Exception as e:
+                                error_info = traceback.format_exc()
+                                print(f"处理流式输出行错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                                print(f"详细错误信息:\n{error_info}")
+                                continue
+                            # 流式合成语音          
                             # 发送音频数据
-                            audio_data = bytes(callback.audio_buffer)
+                            #audio_data = bytes(tts.gen_radio(text=text_content))
                             if audio_data:
                                 yield f"data:audio,{audio_data.hex()}\n\n"
-                                callback.audio_buffer.clear()
-                            # 发送音频数据到前端
-                    except Exception as e:
-                        print(f"处理流式输出块错误: {str(e)}")
-                        continue
-                synthesizer.streaming_complete()
-                audio_data = bytes(callback.audio_buffer)
                 if audio_data:
                     yield f"data:audio,{audio_data.hex()}\n\n"
-                    callback.audio_buffer.clear()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
             except Exception as e:
-                print(f"识别前方的情况API调用错误: {str(e)}")
+                error_info = traceback.format_exc()
+                print(f"识别前方的情况API调用错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                print(f"详细错误信息:\n{error_info}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:
@@ -475,50 +878,116 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
             try:
                 # 先添加历史对话（除了最后一个元素，即当前用户输入）
                 llm_text_reader.extend(history_msg[:-1])  # 添加除最后一个元素外的所有历史消息
-                # 转换为多模态格式
-                llm_text_reader = convert_to_multimodal(llm_text_reader)
-                # 提取当前用户输入的文本部分并添加到数组中
+                # 提取当前用户输入的文本部分
                 user_message = history_msg[-1].get('content', '')
-                llm_text_reader.append({"role": "user", "content": [{"image": image_path}, {"text": user_message}]})
-                yield f"data: 正在分析文字内容...\n\n"
-                completion = dashscope.MultiModalConversation.call(
-                    model="qwen-vl-ocr",
-                    messages=llm_text_reader,
-                    temperature=0.8,
-                    result_format='message',
-                    timeout=timeout,
-                    stream=True,
-                    # 增量式流式输出
-                    incremental_output=True
-                )
-                for chunk in completion:
-                    try:
-                        text_content = chunk.output.choices[0].message.content[0].get('text', '')
-                        if text_content:
-                            print(f"{text_content}")
-                            full_text += text_content
-                            yield f"data: {text_content}\n\n"
+                yield f"data: 阅读文字：\n\n"
+                
+                # 准备BlueLM多模态模型调用参数
+                params = {
+                    'requestId': str(uuid.uuid4())
+                }
+                print('requestId:', params['requestId'])
+                
+                # 读取图片并转换为Base64
+                with open(image_path, "rb") as f:
+                    b_image = f.read()
+                image = base64.b64encode(b_image).decode('utf-8')
+                
+                # 构建请求数据
+                data = {
+                    'prompt': '你好',
+                    'sessionId': str(uuid.uuid4()),
+                    'requestId': params['requestId'],
+                    'model': 'vivo-BlueLM-V-2.0',
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": chater.reader,
+                            "contentType": "text"
+                        },
+                        {
+                            "role": "user",
+                            "content": "data:image/JPEG;base64," + image,
+                            "contentType": "image"
+                        },
+                        {
+                            "role": "user",
+                            "content": user_message,
+                            "contentType": "text"
+                        }
+                    ],
+                }
+                
+                # 生成认证头部
+                headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+                headers['Content-Type'] = 'application/json'
+                
+                # 发起请求
+                url = 'http://{}{}' .format(DOMAIN, URI)
+                response = requests.post(url, json=data, headers=headers, params=params, stream=True)
+                
+                if response.status_code == 200:
+                    first_line = True
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                if first_line:
+                                    first_line = False
+                                    fl_time = time.time()
+                                    fl_timecost = fl_time - start_time
+                                    print("首字耗时: %.2f秒" % fl_timecost)
+                                
+                                line_text = line.decode('utf-8', errors='ignore')
+                                print(line_text)
+                                
+                                # 从返回的数据中提取文本内容
+                                try:
+                                    # 检查是否是data:开头的JSON格式
+                                    if line_text.startswith('data:'):
+                                        # 提取JSON部分
+                                        json_text = line_text[5:].strip()
+                                        # 解析JSON
+                                        json_data = json.loads(json_text)
+                                        # 提取message字段
+                                        text_content = json_data.get('message', '')
+                                        message_type = json_data.get('type', 'text')
+                                        
+                                        if text_content and message_type == 'text':
+                                            print(f"解析到消息: {text_content}")
+                                            full_text += text_content
+                                            # 发送文本内容到前端
+                                            yield f"data: {text_content}\n\n"
+                                    else:
+                                        # 尝试直接解析JSON
+                                        line_data = json.loads(line_text)
+                                        text_content = line_data.get('text', '')
+                                        if text_content:
+                                            print(f"{text_content}")
+                                            full_text += text_content
+                                            # 发送文本内容到前端
+                                            yield f"data: {text_content}\n\n"
+                                except json.JSONDecodeError:
+                                    # 如果不是JSON格式，直接使用文本
+                                    print(f"非JSON格式: {line_text}")
+                            except Exception as e:
+                                error_info = traceback.format_exc()
+                                print(f"处理流式输出行错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                                print(f"详细错误信息:\n{error_info}")
+                                continue
                             # 流式合成语音
                             synthesizer.streaming_call(text_content)
                             time.sleep(0.1)  # 给合成器处理时间
                             
                             # 发送音频数据
-                            audio_data = bytes(callback.audio_buffer)
+                            #audio_data = bytes(tts.gen_radio(text=text_content))
                             if audio_data:
                                 yield f"data:audio,{audio_data.hex()}\n\n"
-                                callback.audio_buffer.clear()
-                    except Exception as e:
-                        print(f"处理流式输出块错误: {str(e)}")
-                        continue
-                synthesizer.streaming_complete()
-                audio_data = bytes(callback.audio_buffer)
-                if audio_data:
-                    yield f"data:audio,{audio_data.hex()}\n\n"
-                    callback.audio_buffer.clear()
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
             except Exception as e:
-                print(f"文字阅读API调用错误: {str(e)}")
+                error_info = traceback.format_exc()
+                print(f"文字阅读API调用错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                print(f"详细错误信息:\n{error_info}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:
@@ -550,23 +1019,23 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                             time.sleep(0.1)  # 给合成器处理时间
                             
                             # 发送音频数据
-                            audio_data = bytes(callback.audio_buffer)
+                            #audio_data = bytes(tts.gen_radio(text=text_content))
                             if audio_data:
                                 yield f"data:audio,{audio_data.hex()}\n\n"
-                                callback.audio_buffer.clear()
                     except Exception as e:
-                        print(f"处理流式输出块错误: {str(e)}")
+                        error_info = traceback.format_exc()
+                        print(f"处理流式输出块错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                        print(f"详细错误信息:\n{error_info}")
                         continue
-                synthesizer.streaming_complete()
-                audio_data = bytes(callback.audio_buffer)
                 if audio_data:
                     yield f"data:audio,{audio_data.hex()}\n\n"
-                    callback.audio_buffer.clear()
                 yield f"data: [完成]\n\n"
                 history_msg.append({"role": "assistant", "content": full_text})
                 print("响应全文：", full_text)
             except Exception as e:
-                print(f"法律咨询API调用错误: {str(e)}")
+                error_info = traceback.format_exc()
+                print(f"法律咨询API调用错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                print(f"详细错误信息:\n{error_info}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:
@@ -581,23 +1050,19 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                     # print("当前字典：",user_messages_dic)
                     yield f"data: 领航模式\n\n"
                 else:
-                    synthesizer.streaming_call("未登录，无法使用领航模式")
+                    
                     time.sleep(0.1)  # 给合成器处理时间
                     
                     # 发送音频数据
-                    audio_data = bytes(callback.audio_buffer)
+                    audio_data = bytes(tts.gen_radio(text="未登录，无法使用领航模式"))
                     if audio_data:
                         yield f"data:audio,{audio_data.hex()}\n\n"
-                        callback.audio_buffer.clear()
-                    synthesizer.streaming_complete()
-                    audio_data = bytes(callback.audio_buffer)
-                    if audio_data:
-                        yield f"data:audio,{audio_data.hex()}\n\n"
-                        callback.audio_buffer.clear()
                     yield f"data: 未登录，无法使用领航模式\n\n"
                     yield f"data: [完成]\n\n"
             except Exception as e:
-                print(f"领航任务API调用错误: {str(e)}")
+                error_info = traceback.format_exc()
+                print(f"领航任务API调用错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                print(f"详细错误信息:\n{error_info}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:
@@ -607,22 +1072,14 @@ def call_llm_api(llm_lr_response, history_msg, image_path=None, user_token="", u
                 if user_token !="" and user_token != None and user_token!="None": 
                     yield f"data: 陪伴模式\n\n"
                 else:
-                    synthesizer.streaming_call("未登录，无法使用陪伴模式")
-                    time.sleep(0.1)  # 给合成器处理时间
-                    
-                    # 发送音频数据
-                    audio_data = bytes(callback.audio_buffer)
+                    audio_data = bytes(tts.gen_radio(text="未登录，无法使用陪伴模式"))
                     if audio_data:
                         yield f"data:audio,{audio_data.hex()}\n\n"
-                        callback.audio_buffer.clear()
-                    synthesizer.streaming_complete()
-                    audio_data = bytes(callback.audio_buffer)
-                    if audio_data:
-                        yield f"data:audio,{audio_data.hex()}\n\n"
-                        callback.audio_buffer.clear()
                     yield f"data: 未登录，无法使用陪伴模式\n\n"
             except Exception as e:
-                print(f"陪伴模式调用错误: {str(e)}")
+                error_info = traceback.format_exc()
+                print(f"陪伴模式调用错误 - 文件: {__file__}, 函数: call_llm_api, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+                print(f"详细错误信息:\n{error_info}")
                 if "Connection" in str(e):
                     yield f"data: 抱歉，服务连接出现问题，请稍后再试。\n\n"
                 else:
@@ -662,7 +1119,9 @@ def login():
             }), 201
         except Exception as e:
             db.session.rollback()
-            print(f"用户创建失败: {str(e)}")
+            error_info = traceback.format_exc()
+            print(f"用户创建失败 - 文件: {__file__}, 函数: login, 行号: {traceback.extract_tb(e.__traceback__)[-1].lineno}, 错误: {str(e)}")
+            print(f"详细错误信息:\n{error_info}")
             return jsonify({
                 "status": "error",
                 "message": "创建用户失败",

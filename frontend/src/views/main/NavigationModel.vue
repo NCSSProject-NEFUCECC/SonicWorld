@@ -285,7 +285,7 @@ const captureAndSendFrame = async () => {
       navigationResponse.value = '';
       
       // 使用fetch API发送请求并处理流式响应
-      const response = await fetch('http://101.42.16.55:5000/api/navigate', {
+      const response = await fetch('http://127.0.0.1:5000/api/navigate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

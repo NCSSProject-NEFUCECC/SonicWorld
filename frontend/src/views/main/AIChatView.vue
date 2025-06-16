@@ -288,7 +288,7 @@ const getWeatherInfo = async () => {
     })
 
     // 发送位置信息到后端获取天气
-    const response = await fetch('http://101.42.16.55:5000/api/weather', {
+    const response = await fetch('http://127.0.0.1:5000/api/weather', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -366,7 +366,7 @@ const sendMessage = async () => {
     })
     console.log('经度:', position.coords.longitude)
     console.log('纬度:', position.coords.latitude)
-    const response = await fetch('http://101.42.16.55:5000/api/chat', {
+    const response = await fetch('http://127.0.0.1:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -403,7 +403,25 @@ const sendMessage = async () => {
             console.log('对话完成')
           } else {
             receivedText += content
-            chatMessages.value[assistantMessageIndex].content = receivedText
+            
+            // 处理API标签内容 - 考虑流式传输的情况
+            let displayText = receivedText
+            
+            // 删除完整的API标签，保持换行格式
+            displayText = displayText.replace(/<API>.*?<\/API>/gs, '')
+            displayText = displayText.replace(/<APIs>.*?<\/APIs>/gs, '')
+            
+            // 处理未闭合的API标签
+            const apiMatch = displayText.match(/(.*?)(<APIs?>(?!.*<\/APIs?>).*?)$/s)
+            if (apiMatch) {
+              displayText = apiMatch[1]
+            }
+            
+            // 格式化特定文本，确保独立成行
+            displayText = displayText.replace(/(我将去调用\[.*?\]，容我思考一下。。。)/g, '\n$1\n')
+            displayText = displayText.replace(/\n{3,}/g, '\n\n') // 避免过多空行
+            
+            chatMessages.value[assistantMessageIndex].content = displayText
             
             if (receivedText === '领航模式') {
               router.push({
@@ -494,6 +512,8 @@ margin-right: 8px;
 background-color: #f0f0f0;
 padding: 8px;
 border-radius: 5px;
+white-space: pre-wrap;
+word-wrap: break-word;
 }
 
 .user-message .message-content {

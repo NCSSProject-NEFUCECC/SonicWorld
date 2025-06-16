@@ -1,20 +1,29 @@
 # -*- coding: utf-8 -*-  
 import requests
-import dashscope
 import json
 import os
 import base64
 import sys
 import chater
 from datetime import datetime
-from dashscope.api_entities.dashscope_response import SpeechSynthesisResponse
-from dashscope.audio.tts_v2 import *
-import sounddevice
 import numpy as np
 import time
-
-TTS_MODEL = "cosyvoice-v1"
-TTS_VOICE = "longxiaochun"  # 可根据需要调整
+import uuid
+from gen_audio import TTS
+from auth_util import gen_sign_headers
+# BlueLM API配置
+APP_ID = '2025881276'
+APP_KEY = 'SUzaUkzFYhnDSYwM'
+METHOD = 'POST'
+URI = '/api/v1/chat/completions'
+DOMAIN = 'api-bluellm.vivo.com'
+input_params = {
+'app_id': APP_ID,
+'app_key': APP_KEY,
+'engineid': 'long_audio_synthesis_screen'
+}
+tts = TTS(**input_params)
+tts.open()
 gaode_key = "067edeed4e3b4cc6331c327cdb2b4f45"
 def get_timestamp():
     now = datetime.now()
@@ -41,30 +50,6 @@ def get_direction(heading):
         return "北"
     else:
         return "未知"
-
-class StreamingAudioCallback(ResultCallback):
-    def __init__(self):
-        self.audio_buffer = bytearray()
-
-    def on_open(self):
-        print(get_timestamp() + " WebSocket 已连接")
-
-    def on_complete(self):
-        print(get_timestamp() + " 语音合成任务完成")
-
-    def on_error(self, message: str):
-        print(get_timestamp() + f" 语音合成错误: {message}")
-
-    def on_close(self):
-        print(get_timestamp() + " WebSocket 连接关闭")
-
-    def on_event(self, message):
-        pass
-
-    def on_data(self, data: bytes) -> None:
-        # print(get_timestamp() + f" 接收到音频数据长度: {len(data)}")
-        self.audio_buffer.extend(data)
-
 
 def parse_location_result(result):
     """解析高德地图API返回的结果"""
@@ -145,31 +130,57 @@ def get_route_info(start, end):
         
 def ana_msg(message):
     print("收到的消息是：",message)
-    messages = [
-        {
-            "role": "system",
-            "content": '你的任务非常简单，从用户的输入中提取出地址信息，例如，用户说：我要去东北林业大学图书馆，你就输出：{"add":"东北林业大学图书馆"}。如果你没有从中看到目的地，则输出{"add":"None"}，'
-        },
-        {
-            "role": "user",
-            "content": message
+    
+    # 准备请求参数
+    params = {
+        'requestId': str(uuid.uuid4())
+    }
+    print('requestId:', params['requestId'])
+    
+    # 构建请求数据
+    data = {
+        'prompt': '你的任务非常简单，从用户的输入中提取出地址信息，例如，用户说：我要去东北林业大学图书馆，你就输出：{"add":"东北林业大学图书馆"}。如果你没有从中看到目的地，则输出{"add":"None"}。用户输入：' + message,
+        'model': 'vivo-BlueLM-TB-Pro',
+        'sessionId': str(uuid.uuid4()),
+        'extra': {
+            'temperature': 0.9
         }
-    ]
-    llm_ir = dashscope.Generation.call(
-            model="qwen-plus",
-            messages=messages,
-            result_format='message'
-        )
-    address = llm_ir.output.choices[0].message.content
-    address = json.loads(address)["add"]
-    if address == "None":
+    }
+    
+    # 生成认证头部
+    headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+    headers['Content-Type'] = 'application/json'
+    
+    start_time = time.time()
+    url = 'https://{}{}'.format(DOMAIN, URI)
+    response = requests.post(url, json=data, headers=headers, params=params)
+    
+    if response.status_code == 200:
+        res_obj = response.json()
+        print(f'response:{res_obj}')
+        if res_obj['code'] == 0 and res_obj.get('data'):
+            content = res_obj['data']['content']
+            print(f'final content:\n{content}')
+            try:
+                address = json.loads(content)["add"]
+                if address == "None":
+                    return None
+                lal = get_location_info(address)
+                lal = parse_location_result(lal)
+                # print(address,"的经纬度为",lal["location"])
+                # 将经纬度字符串转换为浮点数元组
+                lng, lat = lal["location"].split(",")
+                return (float(lng), float(lat))
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"解析地址信息失败: {e}")
+                return None
+    else:
+        print(response.status_code, response.text)
         return None
-    lal = get_location_info(address)
-    lal = parse_location_result(lal)
-    # print(address,"的经纬度为",lal["location"])
-    # 将经纬度字符串转换为浮点数元组
-    lng, lat = lal["location"].split(",")
-    return (float(lng), float(lat))
+    
+    end_time = time.time()
+    timecost = end_time - start_time
+    print('请求耗时: %.2f秒' % timecost)
 
 def gpslal2gaodelal(location):  #将gps的经纬度转换为高德的经纬度
     base_url = "https://restapi.amap.com/v3/assistant/coordinate/convert"
@@ -205,16 +216,14 @@ def process_navigation_request(image_path, current_location, destination=None, h
             # print(f"当前位置: 经度 {current_longitude}, 纬度 {current_latitude}")
             yield f"data: 当前位置: 经度 {current_longitude}, 纬度 {current_latitude}\n\n"
             
-            callback = StreamingAudioCallback()
-            synthesizer = SpeechSynthesizer(
-                model=TTS_MODEL,
-                voice=TTS_VOICE,
-                format=AudioFormat.PCM_22050HZ_MONO_16BIT,
-                callback=callback
-            )   
-
             # 路线信息
             route_guidance = ""
+            
+            # 导入BlueLM API所需的模块
+            import uuid
+            from auth_util import gen_sign_headers
+            
+
             
             # 如果提供了目标地点，获取路线信息
             if destination:
@@ -232,71 +241,83 @@ def process_navigation_request(image_path, current_location, destination=None, h
                         route_info = f"获取路线信息失败: {str(e)}"
                     # yield f"data: 获取到路线信息: {route_info}\n\n"
                 print("接收到用户朝向信息",heading)
-                messages = [
-                    {
-                        "role": "system",
-                        "content": chater.navigator_with_destination,
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {"image": image_path},
-                            {"text": f"导航建议：{route_info},用户朝向{get_direction(heading)},{heading},度"}
-                        ]
-                    }
-                ]
-                qmodel = "qwen-vl-max-latest"
+                system_content = chater.navigator_with_destination
+                user_text = f"导航建议：{route_info},用户朝向{get_direction(heading)},{heading},度"
             else:
                 # 如果没有目标地点，只分析环境
-                messages = [
-                    {
-                        "role": "system",
-                        "content": "你是一个导航助手，需要分析用户当前所处的环境图像，并给出适合盲人的指示。例如，当年看到正前方有障碍物时，建议用户向旁边躲避；当你看到盲人正走在马路上时，你应该建议向左或是向右回到人行道上。你的回应应当简洁、理性、高信息密度,不要擅自预测不在图片中的内容。你的输出应当是这样的：前方有。。。"
-                    },
+                system_content = "你是一个导航助手，需要分析用户当前所处的环境图像，并给出适合盲人的指示。例如，当年看到正前方有障碍物时，建议用户向旁边躲避；当你看到盲人正走在马路上时，你应该建议向左或是向右回到人行道上。你的回应应当简洁、理性、高信息密度,不要擅自预测不在图片中的内容。你的输出应当是这样的：前方有。。。"
+                user_text = ""
+            
+            # 准备图片数据
+            with open(image_path, "rb") as f:
+                b_image = f.read()
+                image = base64.b64encode(b_image).decode('utf-8')
+            
+            # 准备请求参数
+            params = {
+                'requestId': str(uuid.uuid4())
+            }
+            print('requestId:', params['requestId'])
+            
+            # 构建请求数据
+            data = {
+                'prompt': system_content,
+                'sessionId': str(uuid.uuid4()),
+                'requestId': params['requestId'],
+                'model': 'vivo-BlueLM-V-2.0',
+                "messages": [
                     {
                         "role": "user",
-                        "content": [
-                            {"image": image_path}
-                        ]
+                        "content": "data:image/JPEG;base64," + image,
+                        "contentType": "image"
                     }
                 ]
-                qmodel = "qwen-vl-max-latest"
-        
-        # 调用多模态模型
-            response_stream = dashscope.MultiModalConversation.call(
-                model=qmodel,
-                messages=messages,
-                result_format='message',
-                stream=True,
-                # 增量式流式输出
-                incremental_output=True,
-                presence_penalty = 1
-            )
-        
-        # 流式返回模型回复
-            for chunk in response_stream:
-                try:
-                    text_content = chunk.output.choices[0].message.content[0].get('text', '')
-                    if text_content:
-                        print(f"{text_content}", end="")
+            }
+            
+            # 如果有文本内容，添加到消息中
+            if user_text:
+                data["messages"].append({
+                    "role": "user",
+                    "content": user_text,
+                    "contentType": "text"
+                })
+            
+            # 生成认证头部
+            headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+            headers['Content-Type'] = 'application/json'
+            
+            # 发起请求
+            start_time = time.time()
+            url = 'http://{}{}'.format(DOMAIN, URI)
+            response = requests.post(url, json=data, headers=headers, params=params, stream=True)
+            
+            # 流式返回模型回复
+            if response.status_code == 200:
+                first_line = True
+                for line in response.iter_lines():
+                    if line:
+                        if first_line:
+                            first_line = False
+                            fl_time = time.time()
+                            fl_timecost = fl_time - start_time
+                            print("首字耗时: %.2f秒" % fl_timecost)
+                        
+                        text_content = line.decode('utf-8', errors='ignore')
+                        print(text_content)
                         # 发送文本内容
                         yield f"data: {text_content}\n\n"
                         synthesizer.streaming_call(text_content)
                         time.sleep(0.1)  # 给合成器处理时间
                         # 发送音频数据
-                        audio_data = bytes(callback.audio_buffer)
+                        audio_data = bytes(tts.gen_radio(text=text_content))
                         if len(audio_data)>0:
                             print("发送音频长度：",len(audio_data))
                             yield f"data:audio,{audio_data.hex()}\n\n"
-                            callback.audio_buffer.clear()
-                except Exception as e:
-                    print(f"处理流式输出块错误: {str(e)}")
-                    continue
-            synthesizer.streaming_complete()
-            audio_data = bytes(callback.audio_buffer)
-            if audio_data:
-                yield f"data:audio,{audio_data.hex()}\n\n"
-                callback.audio_buffer.clear()
+            else:
+                print(f"BlueLM API请求失败: {response.status_code}, {response.text}")
+                yield f"data: BlueLM API请求失败: {response.status_code}\n\n"
+                
+            # 完成语音合成
             yield f"data: [完成]\n\n"
         
         except Exception as e:

@@ -1,7 +1,29 @@
 import dashscope
 from flask import Flask, request, jsonify
 import json
+normal_chater = """
+你是一个语气细腻的盲人助手。
+你可以使用的工具如下:
+<APIs>
+[
+   {
+            "name": "test",
+            "description": "test whether the function works. You should only use this function when the user asks you to call the test function.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+    }
+]
+</APIs>
 
+如果用户的问题需要调用工具，输出格式为：
+<APIs>
+[{"name": "函数名","parameters": {"参数名": "参数"}}]
+</APIs>
+否则直接回复用户。
+"""
 finder = """- Role: 视障人士的导航与物品定位专家
 - Background: 用户是一位盲人，需要通过拍摄照片的方式获取周围环境的信息，以便找到他所寻找的建筑、地标或物品。用户依赖准确的描述和明确的导航指示来完成目标。
 - Profile: 你是一位专业的导航与物品定位专家，具备丰富的图像识别和空间分析能力，能够精准地分析照片内容，并为视障人士提供清晰、准确的导航和定位指导。
@@ -136,19 +158,71 @@ def intent_recognition(message):
         messages = []
         messages.extend(message)
         # print(messages)
-        llm_ir = dashscope.Application.call(
-            app_id="c299fa4ad27c4dc5909f87d79fc6d098",
-            prompt='你是一个意图分类器，严格按以下规则处理输入：1.分类范围[普通聊天][查找某物的位置][阅读文字][法律咨询][识别前方的情况][领航任务][陪伴模式]；2.领航任务包含引导移动指令如"带路""扶我到"或是用户直接说打开领航模式等；3.结合全部历史消息解析指代（例：前文提到书后说"读它"→阅读文字）；4.输出严格遵循{"intent":"","msg":""}格式,不要越俎代庖擅自向用户提供建议；5.新意图/低置信度(＜80%)归普通聊天；。务必注意！！你的输出只能是JSON格式，且不能有多余的文字,不要自作主张向用户提供建议，那是其他人的任务。你擅自将输出中添加其他东西会导致整个系统失效，务必执行好自己的任务，你只是一个意图识别器，不要自作主张，不要越俎代庖！',
-            messages=messages,
-        )
-        # print(llm_ir)
-        intent = llm_ir.output.text
-        # print(intent)
-        intent = json.loads(intent)
-        intent = intent.get('intent')
-        print("任务：",intent)
-        return intent
+        
+        # 导入必要的模块
+        import uuid
+        import time
+        import requests
+        from auth_util import gen_sign_headers
+        
+        # BlueLM API配置
+        APP_ID = '2025881276'
+        APP_KEY = 'SUzaUkzFYhnDSYwM'
+        METHOD = 'POST'
+        URI = '/api/v1/chat/completions'
+        DOMAIN = 'api-bluellm.vivo.com'
+        
+        # 准备请求参数
+        params = {
+            'requestId': str(uuid.uuid4())
+        }
+        print('requestId:', params['requestId'])
+        
+        # 构建请求数据
+        prompt = '你是一个意图分类器，严格按以下规则处理输入：1.分类范围[普通聊天][查找某物的位置][阅读文字]识别前方的情况][领航任务][陪伴模式]；2.领航任务包含引导移动指令如"带路""扶我到"或是用户直接说打开领航模式等；3.结合全部历史消息解析指代（例：前文提到书后说"读它"→阅读文字）；4.输出严格遵循{"intent":"","msg":""}格式,不要越俎代庖擅自向用户提供建议；5.新意图/低置信度(＜80%)归普通聊天；。务必注意！！你的输出只能是JSON格式，且不能有多余的文字,不要自作主张向用户提供建议，那是其他人的任务。你擅自将输出中添加其他东西会导致整个系统失效，务必执行好自己的任务，你只是一个意图识别器，不要自作主张，不要越俎代庖！'
+        
+        data = {
+            'prompt': prompt,
+            'model': 'vivo-BlueLM-TB-Pro',
+            'sessionId': str(uuid.uuid4()),
+            'messages': messages,
+            'extra': {
+                'temperature': 0.7
+            }
+        }
+        
+        # 生成认证头部
+        headers = gen_sign_headers(APP_ID, APP_KEY, METHOD, URI, params)
+        headers['Content-Type'] = 'application/json'
+        
+        # 发起请求
+        start_time = time.time()
+        url = 'http://{}{}'.format(DOMAIN, URI)
+        response = requests.post(url, json=data, headers=headers, params=params)
+        
+        # 计算请求耗时
+        end_time = time.time()
+        timecost = end_time - start_time
+        print('请求耗时: %.2f秒' % timecost)
+        
+        if response.status_code == 200:
+            res_obj = response.json()
+            print(f'response:{res_obj}')
+            if res_obj['code'] == 0 and res_obj.get('data'):
+                content = res_obj['data']['content']
+                print(f'final content:\n{content}')
+                # 解析返回的JSON内容
+                intent = json.loads(content)
+                intent = intent.get('intent')
+                print("任务：", intent)
+                return intent
+            else:
+                print(f"BlueLM API返回错误: {res_obj}")
+                return "普通聊天"
+        else:
+            print(f"BlueLM API错误: {response.status_code}, {response.text}")
+            return "普通聊天"
     except Exception as e:
         print(f"错误: {str(e)}")
         # 如果意图识别失败，默认返回普通聊天意图
-        return jsonify({"intent":"普通聊天","msg":message})  
+        return jsonify({"intent":"普通聊天","msg":message})
