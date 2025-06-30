@@ -14,7 +14,54 @@ normal_chater = """
                 "properties": {},
                 "required": []
             },
-    }
+    },
+    {
+            "name": "weibo_hot",
+            "description": "get the weibo hot event",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+    },
+    {
+            "name": "horoscope",
+            "description": "get the horoscope for a specific constellation",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "horoscope_type": {
+                        "type": "string",
+                        "description": "lowercase constellation names in English",
+                        "enum": ["aries", "taurus", "gemini", "cancer", "leo", "virgo", "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces"]
+                    }
+                },
+                "required": ["horoscope_type"]
+            },
+    },
+    {
+            "name": "exchange_rate",
+            "description": "get currency exchange rate and convert amount between different currencies",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_currency": {
+                        "type": "string",
+                        "description": "source currency code (e.g., USD, EUR, GBP)"
+                    },
+                    "to_currency": {
+                        "type": "string",
+                        "description": "target currency code (e.g., CNY, USD, EUR)"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "amount to convert, default is 1",
+                        "default": 1
+                    }
+                },
+                "required": ["from_currency", "to_currency"]
+            },
+    },
 ]
 </APIs>
 
@@ -133,23 +180,6 @@ navigator_without_destination = """- Role: 视觉辅助专家
   - 例子5：图像显示用户正处于室内，并且物品摆放杂乱。
     回应：“当前处于室内环境，物品摆放杂乱，请注意安全。”
 """
-# 将普通文本消息转换为多模态格式
-def convert_to_multimodal(messages):
-    converted_messages = []
-    for msg in messages:
-        if msg.get('role') == 'user':
-            # 将用户消息转换为多模态格式
-            converted_msg = {
-                'role': 'user',
-                'content': [
-                    {'type': 'text', 'text': msg.get('content', '')}
-                ]
-            }
-            converted_messages.append(converted_msg)
-        else:
-            # 保持其他角色消息不变
-            converted_messages.append(msg)
-    return converted_messages
 
 def intent_recognition(message):
     try:

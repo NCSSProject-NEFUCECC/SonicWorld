@@ -5,6 +5,7 @@ import base64
 import json
 import os
 from enum import IntEnum
+import traceback
 
 
 os.environ['APP_ID']='2025881276'
@@ -18,8 +19,8 @@ class AueType(IntEnum):
 class TTS(object):
 
     def __init__(self, app_id=None, app_key=None, engineid='short_audio_synthesis_jovi', *args, **argskw):
-        self._appid = app_id or os.getenv('APP_ID')
-        self._app_key = app_key or os.getenv('APP_KEY')
+        self._appid = "2025881276"
+        self._app_key = "SUzaUkzFYhnDSYwM" or os.getenv('APP_KEY')
         if isinstance(self._app_key, str):
             self._app_key = self._app_key
         self._engineid = engineid
@@ -67,7 +68,7 @@ class TTS(object):
         obj["text"] = base64.b64encode(text.encode('utf-8')).decode('utf-8')
         obj["auf"] = 'audio/L16;rate=24000'
         obj["vcn"] = vcn
-        obj["volume"] = 30
+        obj["volume"] = 100  # 提高默认音量从30到100
         obj["aue"] = aue
         obj["sfl"] = 1
         obj["reqId"] = int(round(time.time() * 1000))  # int(t.ident)
@@ -101,8 +102,8 @@ class TTS(object):
                     elif jre["data"]["status"] == 2:
                         print("complete ~")
                         break
-                    jre["data"]["audio"] = ''
-                    print(jre)
+                    # 保留原始音频数据用于调试日志
+                    # print(jre)
             else:
                 print("error,recv type:", code)
                 break

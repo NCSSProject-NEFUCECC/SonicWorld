@@ -1,9 +1,10 @@
 import axios from 'axios'
 import { CookieUtils } from '../utils/cookieUtils'
+import { getApiUrl, API_CONFIG } from '../config/apiConfig'
 
 export class CommonService {
     static loginService = async (username:string,password:string) => {
-        const response = await axios.post('http://101.42.16.55:5000/api/login', {
+        const response = await axios.post(getApiUrl(API_CONFIG.ENDPOINTS.LOGIN), {
             username: username,
             password: password
           })

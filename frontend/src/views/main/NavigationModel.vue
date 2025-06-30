@@ -70,7 +70,7 @@ const playAudio = (audioData: Uint8Array): Promise<void> => {
       return resolve()
     }
 
-    const wavBuffer = encodeWav(audioData, 22050)
+    const wavBuffer = encodeWav(audioData, 24000)
     audioContext.value.decodeAudioData(wavBuffer).then(audioBuffer => {
       const source = audioContext.value!.createBufferSource()
       activeAudioSource.value = source

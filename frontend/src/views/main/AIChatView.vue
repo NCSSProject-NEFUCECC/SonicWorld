@@ -100,8 +100,16 @@ const isPlayingAudio = ref(false)
 const activeAudioSource = ref<AudioBufferSourceNode | null>(null)
 
 // 初始化音频上下文
+const initAudioContext = () => {
+  if (!audioContext.value) {
+    audioContext.value = new (window.AudioContext || (window as any).webkitAudioContext)()
+    console.log('AudioContext initialized, state:', audioContext.value.state)
+  }
+}
+
 onMounted(() => {
-  audioContext.value = new (window.AudioContext || (window as any).webkitAudioContext)()
+  // 延迟初始化AudioContext，等待用户交互
+  initAudioContext()
   initCamera()
   getWeatherInfo()
 })
@@ -114,44 +122,204 @@ const playAudio = (audioData: Uint8Array): Promise<void> => {
       return resolve()
     }
 
-    const wavBuffer = encodeWav(audioData, 22050)
-    audioContext.value.decodeAudioData(wavBuffer).then(audioBuffer => {
+    console.log('开始播放音频，数据长度:', audioData.length)
+    
+    // 确保AudioContext处于运行状态
+    if (audioContext.value.state === 'suspended') {
+      audioContext.value.resume().then(() => {
+        playAudioInternal(audioData, resolve)
+      }).catch(error => {
+        console.error('Error resuming AudioContext:', error)
+        resolve()
+      })
+    } else {
+      playAudioInternal(audioData, resolve)
+    }
+  })
+}
+
+// 内部音频播放函数
+const playAudioInternal = (audioData: Uint8Array, resolve: () => void) => {
+  try {
+    // 分析PCM数据
+    const nonZeroCount = Array.from(audioData).filter(byte => byte !== 0).length
+    const zeroPercentage = ((audioData.length - nonZeroCount) / audioData.length) * 100
+    console.log(`PCM数据分析 - 零字节占比: ${zeroPercentage.toFixed(2)}%, 非零字节: ${nonZeroCount}/${audioData.length}`)
+    
+    // 检查音频幅度和静音段
+    let maxAmplitude = 0
+    let minAmplitude = 0
+    const samples = []
+    for (let i = 0; i < audioData.length; i += 2) {
+      if (i + 1 < audioData.length) {
+        const sample = (audioData[i] | (audioData[i + 1] << 8)) << 16 >> 16
+        samples.push(sample)
+        maxAmplitude = Math.max(maxAmplitude, sample)
+        minAmplitude = Math.min(minAmplitude, sample)
+      }
+    }
+    console.log(`音频幅度范围: ${minAmplitude} 到 ${maxAmplitude}`)
+    
+    // 检查前置静音段
+    let firstNonZeroIndex = -1
+    for (let i = 0; i < samples.length; i++) {
+      if (Math.abs(samples[i]) > 10) { // 阈值设为10，避免微小噪声
+        firstNonZeroIndex = i
+        break
+      }
+    }
+    if (firstNonZeroIndex > 0) {
+      const silentDuration = (firstNonZeroIndex / 24000).toFixed(3)
+      console.log(`检测到前置静音段: ${firstNonZeroIndex} 样本 (${silentDuration}秒)`)
+    }
+    
+    if (maxAmplitude === 0 && minAmplitude === 0) {
+      console.warn('警告: 音频数据全为静音!')
+    }
+    
+    // 检查是否需要跳过前置静音段
+    let processedAudioData = audioData
+    if (firstNonZeroIndex > 0) {
+      // 跳过前置静音段，从第一个非零样本开始
+      const skipBytes = firstNonZeroIndex * 2 // 每个样本2字节
+      processedAudioData = audioData.slice(skipBytes)
+      console.log(`跳过前置静音段，移除 ${skipBytes} 字节，剩余 ${processedAudioData.length} 字节`)
+    }
+
+    const wavBuffer = encodeWav(processedAudioData, 24000)
+    console.log('WAV buffer created, size:', wavBuffer.byteLength)
+    
+    audioContext.value!.decodeAudioData(wavBuffer).then(audioBuffer => {
+      console.log('音频解码成功，时长:', audioBuffer.duration, '秒')
+      console.log('音频采样率:', audioBuffer.sampleRate, 'Hz')
+      console.log('音频声道数:', audioBuffer.numberOfChannels)
+      console.log('AudioContext采样率:', audioContext.value!.sampleRate, 'Hz')
+      
+      // 检查采样率是否匹配
+      if (audioBuffer.sampleRate !== audioContext.value!.sampleRate) {
+        console.warn(`采样率不匹配! 音频: ${audioBuffer.sampleRate}Hz, AudioContext: ${audioContext.value!.sampleRate}Hz`)
+      }
+      
       const source = audioContext.value!.createBufferSource()
+      const gainNode = audioContext.value!.createGain()
+      
       activeAudioSource.value = source
       source.buffer = audioBuffer
-      source.connect(audioContext.value!.destination)
       
+      // 设置更高的音量来确保可听见
+      const playVolume = Math.max(1.0, 0.8) // 至少80%音量
+      gainNode.gain.value = playVolume
+      console.log('音量设置为:', playVolume)
+      
+      // 连接音频节点：source -> gainNode -> destination
+      source.connect(gainNode)
+      gainNode.connect(audioContext.value!.destination)
+      
+      // 检查连接状态
+      console.log('音频节点连接完成')
+      console.log('AudioContext destination:', audioContext.value!.destination)
+      console.log('AudioContext state before play:', audioContext.value!.state)
+      
+      // 添加更多事件监听器
       source.onended = () => {
+        console.log('音频播放结束')
         source.disconnect()
+        gainNode.disconnect()
         activeAudioSource.value = null
         isPlayingAudio.value = false
         processAudioQueue()
         resolve()
       }
-      
       isPlayingAudio.value = true
       source.start()
+      console.log('音频开始播放，AudioContext状态:', audioContext.value!.state)
+      console.log('音频缓冲区信息: 时长=', audioBuffer.duration.toFixed(2), 's, 采样率=', audioBuffer.sampleRate, 'Hz')
+      
+      // 添加播放监控
+      const checkPlayback = () => {
+        if (isPlayingAudio.value) {
+          console.log('播放状态检查: 音频仍在播放中... AudioContext状态:', audioContext.value!.state)
+          setTimeout(checkPlayback, 1000)
+        }
+      }
+      setTimeout(checkPlayback, 1000)
+      
     }).catch(error => {
       console.error('Error decoding audio:', error)
+      console.error('Audio data length:', audioData.length)
+      console.error('First few bytes:', Array.from(audioData.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '))
+      
+      console.error('WAV数据前44字节 (头部):')
+      const headerView = new Uint8Array(wavBuffer, 0, Math.min(44, wavBuffer.byteLength))
+      let headerHex = ''
+      for (let i = 0; i < headerView.length; i++) {
+        headerHex += headerView[i].toString(16).padStart(2, '0') + ' '
+        if ((i + 1) % 8 === 0) headerHex += '\n'
+      }
+      console.error(headerHex)
+      
       resolve()
     })
-  })
+  } catch (error) {
+    console.error('Error in playAudioInternal:', error)
+    resolve()
+  }
 }
 
 // 处理音频队列
 const processAudioQueue = async () => {
-  if (isPlayingAudio.value || audioQueue.value.length === 0) return
+  if (isPlayingAudio.value) {
+    console.log('音频正在播放中，等待队列处理')
+    return
+  }
+  if (audioQueue.value.length === 0) {
+    console.log('音频队列为空')
+    return
+  }
+  
+  console.log('开始处理音频队列，队列长度:', audioQueue.value.length)
   const nextAudio = audioQueue.value.shift()!
   await playAudio(nextAudio)
 }
 
-// WAV编码器
+// WAV编码器 - 处理16位PCM数据
 const encodeWav = (pcmData: Uint8Array, sampleRate: number): ArrayBuffer => {
   const numChannels = 1
   const bytesPerSample = 2
   const dataSize = pcmData.length
   const buffer = new ArrayBuffer(44 + dataSize)
   const view = new DataView(buffer)
+
+  console.log('编码WAV - PCM数据长度:', dataSize, '字节')
+  console.log('编码WAV - 预期音频时长:', (dataSize / (sampleRate * bytesPerSample)).toFixed(2), '秒')
+  console.log('编码WAV - 前20字节数据:', Array.from(pcmData.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '))
+
+  // 检查PCM数据是否有效
+  const nonZeroCount = Array.from(pcmData).filter(byte => byte !== 0).length
+  const zeroPercentage = ((pcmData.length - nonZeroCount) / pcmData.length) * 100
+  console.log(`编码WAV - 零字节占比: ${zeroPercentage.toFixed(2)}%, 非零字节: ${nonZeroCount}/${pcmData.length}`)
+  
+  // 检查PCM数据长度是否为偶数（16位PCM每个样本2字节）
+  if (pcmData.length % 2 !== 0) {
+    console.warn('警告: PCM数据长度不是偶数，可能不是16位数据')
+  }
+  
+  // 检查PCM数据的字节序
+  let littleEndianCount = 0
+  let bigEndianCount = 0
+  for (let i = 0; i < Math.min(1000, pcmData.length); i += 2) {
+    if (i + 1 < pcmData.length) {
+      // 如果低字节有值而高字节为0，可能是小端序
+      if (pcmData[i] !== 0 && pcmData[i + 1] === 0) {
+        littleEndianCount++
+      }
+      // 如果高字节有值而低字节为0，可能是大端序
+      else if (pcmData[i] === 0 && pcmData[i + 1] !== 0) {
+        bigEndianCount++
+      }
+    }
+  }
+  console.log(`编码WAV - 字节序分析: 小端序特征: ${littleEndianCount}, 大端序特征: ${bigEndianCount}`)
 
   // RIFF头部
   writeString(view, 0, 'RIFF')
@@ -166,14 +334,27 @@ const encodeWav = (pcmData: Uint8Array, sampleRate: number): ArrayBuffer => {
   view.setUint32(24, sampleRate, true)
   view.setUint32(28, sampleRate * numChannels * bytesPerSample, true)
   view.setUint16(32, numChannels * bytesPerSample, true)
-  view.setUint16(34, 16, true)
+  view.setUint16(34, 16, true) // 16位深度
 
   // data子块
   writeString(view, 36, 'data')
   view.setUint32(40, dataSize, true)
 
-  // 填充PCM数据
+  // 填充PCM数据 - 直接复制16位PCM数据
   new Uint8Array(buffer).set(pcmData, 44)
+  
+  // 验证WAV头部
+  console.log('WAV头部验证:')
+  console.log(`- 文件格式: ${String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3))}`)
+  console.log(`- 文件大小: ${view.getUint32(4, true) + 8} 字节`)
+  console.log(`- 文件类型: ${String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11))}`)
+  console.log(`- 格式块标识: ${String.fromCharCode(view.getUint8(12), view.getUint8(13), view.getUint8(14), view.getUint8(15))}`)
+  console.log(`- 音频格式: ${view.getUint16(20, true)}`)
+  console.log(`- 声道数: ${view.getUint16(22, true)}`)
+  console.log(`- 采样率: ${view.getUint32(24, true)} Hz`)
+  console.log(`- 位深度: ${view.getUint16(34, true)} 位`)
+  console.log(`- 数据块标识: ${String.fromCharCode(view.getUint8(36), view.getUint8(37), view.getUint8(38), view.getUint8(39))}`)
+  console.log(`- 数据大小: ${view.getUint32(40, true)} 字节`)
 
   return buffer
 }
@@ -288,7 +469,7 @@ const getWeatherInfo = async () => {
     })
 
     // 发送位置信息到后端获取天气
-    const response = await fetch('http://127.0.0.1:5000/api/weather', {
+    const response = await fetch('http://192.168.31.140:5000/api/weather', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -309,12 +490,15 @@ const getWeatherInfo = async () => {
       // 处理音频数据
       if (data.data.audio) {
         console.log('天气音频数据已收到')
+        // 确保AudioContext已初始化
+        initAudioContext()
         // 获取音频数据的十六进制字符串
         const audioHexString = data.data.audio
         // 将十六进制字符串转换为Uint8Array
         const audioData = new Uint8Array(
           audioHexString.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
         )
+        console.log('天气音频数据转换完成，长度:', audioData.length)
         // 将音频数据添加到队列并播放
         audioQueue.value.push(audioData)
         processAudioQueue()
@@ -347,6 +531,18 @@ onUnmounted(() => {
 
 const sendMessage = async () => {
   if (!userInput.value.trim()) return
+  
+  // 确保AudioContext已初始化并处于运行状态
+  initAudioContext()
+  if (audioContext.value && audioContext.value.state === 'suspended') {
+    try {
+      await audioContext.value.resume()
+      console.log('AudioContext resumed')
+    } catch (error) {
+      console.error('Failed to resume AudioContext:', error)
+    }
+  }
+  
   const currentUserInput = userInput.value
   const user_token = ref(localStorage.getItem('user_token') || '')
   
@@ -366,7 +562,7 @@ const sendMessage = async () => {
     })
     console.log('经度:', position.coords.longitude)
     console.log('纬度:', position.coords.latitude)
-    const response = await fetch('http://127.0.0.1:5000/api/chat', {
+    const response = await fetch('http://192.168.31.140:5000/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -437,12 +633,33 @@ const sendMessage = async () => {
           }
         } else if (line.startsWith('data:audio,')) {
           console.log('收到音频数据')
+          // 确保AudioContext已初始化
+          initAudioContext()
           const hexString = line.substring(11)
-          const audioData = new Uint8Array(
-            hexString.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
-          )
-          audioQueue.value.push(audioData)
-          processAudioQueue()
+          if (hexString && hexString.length > 0) {
+            const audioData = new Uint8Array(
+              hexString.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
+            )
+            console.log('SSE音频数据转换完成，长度:', audioData.length)
+            
+            // 验证音频数据
+            if (audioData.length > 0) {
+              const nonZeroCount = Array.from(audioData).filter(byte => byte !== 0).length
+              const zeroPercentage = ((audioData.length - nonZeroCount) / audioData.length) * 100
+              console.log(`音频数据验证 - 零字节占比: ${zeroPercentage.toFixed(2)}%, 非零字节: ${nonZeroCount}/${audioData.length}`)
+              
+              if (nonZeroCount > 0) {
+                audioQueue.value.push(audioData)
+                processAudioQueue()
+              } else {
+                console.warn('音频数据全为零，跳过播放')
+              }
+            } else {
+              console.warn('音频数据为空，跳过播放')
+            }
+          } else {
+            console.warn('收到空的音频十六进制字符串')
+          }
         }
       }
       

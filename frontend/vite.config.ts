@@ -5,7 +5,6 @@ import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
-// https://vite.dev/config/
 export default defineConfig({
   base: './',
   plugins: [
@@ -19,8 +18,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0', // 允许内网访问
+    port: 5173, // 指定端口
     proxy: {
       '/api/': {
+        target: 'http://192.168.31.140:5000', // 使用内网IP
         changeOrigin: true
       }
     }

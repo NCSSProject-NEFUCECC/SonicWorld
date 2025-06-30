@@ -27,6 +27,7 @@
           <el-icon><Phone /></el-icon>        
           <template #title>陪伴模式</template>
         </el-menu-item>
+
       </div>
       <el-divider></el-divider>
   
@@ -233,7 +234,10 @@
         isLoggedIn.value = true
         loginDialogVisible.value = false
         showLoginCard.value = false
-        haveLogin.value=localStorage.getItem('user_token')
+        // 等待CommonService设置token后再获取
+        setTimeout(() => {
+          haveLogin.value = localStorage.getItem('user_token')
+        }, 100)
         success_logina.play()
       } else {
         ElMessage.error(response.data.message || '登录失败')

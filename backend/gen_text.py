@@ -9,6 +9,7 @@ import time
 from websocket import create_connection
 from auth_util import gen_sign_headers
 from urllib import parse
+import traceback
 NUM = 1
 
 
@@ -132,7 +133,6 @@ def recv_process(ws, tbegin, wav_path):
             print("{} {} {}".format(path, err, t3))
             return
 
-
 def control_process(wav_path):
     t = int(round(time.time() * 1000))
 
@@ -196,11 +196,29 @@ def STT(audio_data):
     import tempfile
     import os
     import soundfile
+    from pydub import AudioSegment
     
-    # 创建临时文件保存音频数据
-    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+    # 创建临时文件保存原始音频数据
+    with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_file:
         temp_file.write(audio_data)
-        temp_wav_path = temp_file.name
+        temp_original_path = temp_file.name
+    
+    # 创建临时wav文件路径
+    temp_wav_path = temp_original_path.replace('.webm', '.wav')
+    
+    try:
+        # 将webm格式转换为wav格式
+        print(f"[STT] 开始转换音频格式: {temp_original_path} -> {temp_wav_path}")
+        audio = AudioSegment.from_file(temp_original_path, format="webm")
+        audio = audio.set_frame_rate(16000).set_channels(1)  # 设置为16kHz单声道
+        audio.export(temp_wav_path, format="wav")
+        print(f"[STT] 音频格式转换完成")
+    except Exception as e:
+        print(f"[STT] 音频格式转换失败: {str(e)}")
+        # 如果转换失败，尝试直接使用原始数据作为wav
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+            temp_file.write(audio_data)
+            temp_wav_path = temp_file.name
     
     try:
         # 使用现有的语音识别流程
@@ -257,6 +275,8 @@ def STT(audio_data):
         return ""
     finally:
         # 清理临时文件
+        if 'temp_original_path' in locals() and os.path.exists(temp_original_path):
+            os.unlink(temp_original_path)
         if os.path.exists(temp_wav_path):
             os.unlink(temp_wav_path)
 
